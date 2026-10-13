@@ -49,7 +49,7 @@ export default function EmployeesPage() {
   const [editing, setEditing] = useState<Employee | null>(null)
   const [form, setForm] = useState<{
     full_name: string
-    residence: string
+    email: string
     phone: string
     role: Role
     commission_mode: CommissionChoice
@@ -57,7 +57,7 @@ export default function EmployeesPage() {
     commission_percent: number
   }>({
     full_name: '',
-    residence: '',
+    email: '',
     phone: '',
     role: 'cashier',
     commission_mode: 'station',
@@ -86,7 +86,7 @@ export default function EmployeesPage() {
     setEditing(employee ?? null)
     setForm({
       full_name: employee?.full_name ?? '',
-      residence: employee?.residence ?? '',
+      email: employee?.email ?? '',
       phone: employee?.phone ?? '',
       role: employee?.role ?? 'cashier',
       // `null` côté serveur = « suit le barème de la station », ce que le
@@ -131,7 +131,7 @@ export default function EmployeesPage() {
       }
       const result = await createMutation.mutateAsync({
         full_name: form.full_name,
-        residence: form.residence,
+        email: form.email,
         phone: form.phone,
         role: form.role,
         station_id: stationId || undefined,

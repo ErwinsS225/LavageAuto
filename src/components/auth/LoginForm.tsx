@@ -92,7 +92,7 @@ export default function LoginForm() {
     }
     setSocialLoading(strategy === 'oauth_google' ? 'google' : 'facebook')
     try {
-      await clerk.authenticateWithRedirect({
+      await clerk.client.signIn.authenticateWithRedirect({
         strategy,
         redirectUrl: '/connexion',
         redirectUrlComplete: '/tableau-de-bord',
@@ -156,7 +156,7 @@ export default function LoginForm() {
           )}
         </Field>
 
-        <Field label="Password" required error={fields.password}>
+        <Field label="Mot de passe" required error={fields.password}>
           {(id) => (
             <div className="relative">
               <Input
@@ -189,9 +189,9 @@ export default function LoginForm() {
               onChange={(event) => setRemember(event.target.checked)}
               className="h-3.5 w-3.5 rounded border-line accent-[#47253F]"
             />
-            Remember me
+            Se souvenir de moi
           </label>
-          <Link to="/connexion" className="font-medium text-[#47253F] hover:underline">
+          <Link to="/mot-de-passe-oublie" className="font-medium text-[#47253F] hover:underline">
             Mot de passe oublié ?
           </Link>
         </div>
