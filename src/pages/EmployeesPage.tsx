@@ -131,7 +131,7 @@ export default function EmployeesPage() {
       }
       const result = await createMutation.mutateAsync({
         full_name: form.full_name,
-        residence: form.email,
+        residence: form.residence,
         phone: form.phone,
         role: form.role,
         station_id: stationId || undefined,
