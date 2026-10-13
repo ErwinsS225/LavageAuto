@@ -107,7 +107,10 @@ export default function EmployeesPage() {
     // se traduit par commission_mode = undefined, ce qui laisse le serveur
     // appliquer le barème de la station (-NULL). Un mode propre ('none',
     // 'per_wash', 'percent') est envoyé tel quel.
-    const bareme: EmployeeInput = {
+    // NOTE: ne pas typer « bareme » comme EmployeeInput, qui contient obligatoirement
+    // `full_name` — ce qui provoquerait un conflit quand on diffuse ...bareme
+    // dans un objet qui lance déjà `full_name`.
+    const bareme: Pick<EmployeeInput, 'commission_mode' | 'commission_per_wash_xof' | 'commission_percent'> = {
       commission_mode: form.commission_mode === 'station' ? undefined : form.commission_mode,
       commission_per_wash_xof: form.commission_per_wash,
       commission_percent: form.commission_percent,
