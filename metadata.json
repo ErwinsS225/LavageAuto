@@ -1,0 +1,6 @@
+{
+  "name": "WashGuard",
+  "description": "Gestion de station de lavage automobile — lavages, caisse, encaissements, dépenses et rapports.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

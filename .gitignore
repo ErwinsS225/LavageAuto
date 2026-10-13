@@ -1,0 +1,41 @@
+# Dépendances
+node_modules/
+.npm/
+
+# Build frontend
+frontend/dist/
+frontend/.vite/
+frontend/.smoke-dist/
+*.tsbuildinfo
+
+# Build backend
+backend/bin/
+backend/tmp/
+washguard-api
+*.exe
+
+# Variables d'environnement (ne jamais committer de secrets)
+.env
+.env.local
+.env.*.local
+
+# Éditeurs / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Sauvegardes de base (contiennent des données clients : ne jamais committer)
+backups/
+*.sql.gz
+
+# Captures et journaux produits par la recette (make recette, make rendu)
+recette/
+apercu/
+
+# Divers
+*.log
+tmp/
+
+# Exécutable produit par l’installation station (make build-station)
+/washguard-api

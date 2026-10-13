@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d12" />
+    <!-- Identité dans l'onglet, les favoris et l'écran d'accueil d'un téléphone. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta
+      name="description"
+      content="WashGuard — gestion des lavages, de la caisse et des recettes d'une station de lavage automobile à Abidjan."
+    />
+    <title>WashGuard — Gestion de station de lavage</title>
+    <!-- Partage : ces balises servent quand le lien est envoyé dans un message
+         (WhatsApp, e-mail). L'image d'aperçu exige une adresse publique :
+         elle sera ajoutée le jour où la vitrine aura un nom de domaine. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="fr_CI" />
+    <meta property="og:site_name" content="WashGuard" />
+    <meta property="og:title" content="WashGuard — le cahier de votre station, remplacé par une vraie caisse" />
+    <meta
+      property="og:description"
+      content="Lavages, encaissements, caisse et recettes d'une station de lavage à Abidjan. Essai gratuit de 14 jours, sans carte bancaire."
+    />
+    <script>
+      // Applique le thème enregistré avant le premier rendu (évite le flash).
+      try {
+        var theme = localStorage.getItem('washguard.theme')
+        if (theme === 'light') document.documentElement.classList.remove('dark')
+        else document.documentElement.classList.add('dark')
+      } catch (e) {
+        /* stockage indisponible : on garde le thème sombre par défaut */
+      }
+    </script>
+    <script type="module" crossorigin src="/assets/index-Bp-ZDWWX.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/api-kNafI1t6.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-aUwp4IrV.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
