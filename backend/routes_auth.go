@@ -70,8 +70,10 @@ func (c corpsInscription) organisation() organisationPayload {
 }
 
 func (a *App) enregistrerRoutesAuth(rt *routeur) {
-	rt.ajouter("POST", "/api/v1/auth/register", a.inscrire)
-	rt.ajouter("POST", "/api/v1/auth/login", a.connecter)
+	// register/login sont publics ; logout et /me exigent la session.
+	rt.routes = append(rt.routes,
+		route{methode: "POST", prefixe: "/api/v1/auth/register", handler: rt.avecSession(a.inscrire), public: true},
+		route{methode: "POST", prefixe: "/api/v1/auth/login", handler: a.connecter, public: true})
 	rt.ajouter("POST", "/api/v1/auth/logout", a.deconnecter)
 	rt.ajouter("GET", "/api/v1/auth/me", a.profilCourant)
 }

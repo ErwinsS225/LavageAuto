@@ -98,12 +98,18 @@ func (a *App) constatEtape(ctx context.Context, organizationID string, st *stati
 		}
 		return false, "Aucun jour d'ouverture défini.", "Définissez au moins une journée d'ouverture complète."
 	case "categories":
-		if cat2 := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_categories WHERE station_id = $1 AND is_active`, st.ID); cat2 > 0 {
+				if st == nil {
+			return false, "Aucune station.", "Créez d'abord votre station."
+		}
+if cat2 := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_categories WHERE station_id = $1 AND is_active`, st.ID); cat2 > 0 {
 			return true, fmt.Sprintf("%d catégorie(s) active(s).", cat2), ""
 		}
 		return false, "Aucune catégorie active.", "Activez au moins une catégorie de véhicules."
 	case "usages":
-		n := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_usages WHERE station_id = $1 AND is_active`, st.ID)
+				if st == nil {
+			return false, "Aucune station.", "Créez d'abord votre station."
+		}
+n := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_usages WHERE station_id = $1 AND is_active`, st.ID)
 		if n > 0 {
 			return true, fmt.Sprintf("%d usage(s) véhicule actif(s).", n), "Reliez usages et catégories si besoin."
 		}
@@ -132,7 +138,10 @@ func (a *App) constatEtape(ctx context.Context, organizationID string, st *stati
 		}
 		return false, "Aucun moyen de paiement.", "Activez au moins un moyen de paiement (espèces, mobile money…)."
 	case "equipe":
-		n := a.compterRequete(ctx, `SELECT COUNT(*) FROM employees WHERE station_id = $1 AND is_active`, st.ID)
+				if st == nil {
+			return false, "Aucune station.", "Créez d'abord votre station."
+		}
+n := a.compterRequete(ctx, `SELECT COUNT(*) FROM employees WHERE station_id = $1 AND is_active`, st.ID)
 		if n > 0 {
 			return true, fmt.Sprintf("%d membre(s) d'équipe.", n), ""
 		}
@@ -143,7 +152,10 @@ func (a *App) constatEtape(ctx context.Context, organizationID string, st *stati
 		}
 		return false, "Équipe non déclarée.", "Invitez ou déclarez votre équipe (facultatif)."
 	case "materiel":
-		n := a.compterRequete(ctx, `SELECT COUNT(*) FROM equipment WHERE station_id = $1 AND is_active`, st.ID)
+				if st == nil {
+			return false, "Aucune station.", "Créez d'abord votre station."
+		}
+n := a.compterRequete(ctx, `SELECT COUNT(*) FROM equipment WHERE station_id = $1 AND is_active`, st.ID)
 		s := a.compterRequete(ctx, `SELECT COUNT(*) FROM stock_items WHERE station_id = $1 AND is_active`, st.ID)
 		if n+s > 0 {
 			return true, fmt.Sprintf("%d équipement(s), %d article(s) de stock.", n, s), ""
