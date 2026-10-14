@@ -14,12 +14,14 @@ Contrôles : cloisonnement entre entreprises (404), permissions par rôle (403),
 prix issus du catalogue, contrats de réponse des routes principales.
 """
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 import uuid
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8099") + "/api/v1"
+BASE = (sys.argv[1] if len(sys.argv) > 1
+        else "http://127.0.0.1:" + os.environ.get("API_PORT", "8080")) + "/api/v1"
 
 
 class Client:

@@ -8,11 +8,13 @@ retour en atelier et une annulation, tout en laissant modifiables les champs
 purement descriptifs (plaque, note, client, laveur, catégorie).
 """
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8099") + "/api/v1"
+BASE = (sys.argv[1] if len(sys.argv) > 1
+        else "http://127.0.0.1:" + os.environ.get("API_PORT", "8080")) + "/api/v1"
 RESULTS = []
 
 

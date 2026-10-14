@@ -70,6 +70,20 @@ python3 scripts/verifications/sonde-lot8.py          # récapitulatif, activatio
 python3 scripts/verifications/sonde-suspension.py    # entreprise suspendue : accès coupé
 ```
 
+**Le port.** Une sonde visée sans argument s'adresse à `http://127.0.0.1:$API_PORT`
+(`8080` par défaut, comme le Makefile). `API_PORT=8099` suffit donc à viser une
+autre instance — c'est ce que fait l'intégration continue, qui démarre l'API sur
+`8099` : les sondes doivent toutes obéir à la même règle, sinon la moitié d'entre
+elles frappe à la mauvaise porte et la campagne échoue pour une raison qui n'a
+rien à voir avec le produit (c'est arrivé).
+
+Pour viser une instance précise sans variable d'environnement, l'adresse peut
+toujours être passée en premier argument :
+
+```bash
+python3 scripts/verifications/sonde-onboarding.py http://127.0.0.1:8100
+```
+
 L'URL de base se passe en premier argument (`http://127.0.0.1:8099` par
 défaut).
 

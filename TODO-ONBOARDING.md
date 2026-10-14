@@ -1100,7 +1100,17 @@ continue exécute enfin ce qui existe (60 tests de bout en bout sur PostgreSQL,
    ignorés (le harnais les saute sans `DATABASE_URL`), et seuls les 5 tests Clerk
    s'exécutaient. Un PostgreSQL de service, `DATABASE_URL` et `-count=1` sont
    désormais posés ; la tâche `sondes` passe de 4 à 10 sondes.
-6. **Deux attentes fausses de ma part, corrigées dans le test et non dans le
+6. **Quatre sondes sur dix frappaient à la mauvaise porte** (trouvé par
+   l'intégration continue, à sa première exécution élargie) : `sonde-onboarding`,
+   `sonde-tarifs`, `sonde-vehicules` et `sonde-invitations` visaient par défaut le
+   port `8080`, les six autres le `8099`. `make verifier-acces` leur passant
+   toujours l'adresse, l'incohérence restait invisible — mais la CI démarre l'API
+   sur `8099` et ne passe aucun argument : ces quatre sondes échouaient donc pour
+   une raison étrangère au produit. Les dix suivent désormais la même règle :
+   argument explicite, sinon `API_PORT`, sinon `8080`; la règle est écrite dans
+   `scripts/verifications/README.md`. C'est le premier défaut que l'élargissement
+   de la CI a attrapé, ce qui est précisément son rôle.
+7. **Deux attentes fausses de ma part, corrigées dans le test et non dans le
    serveur** : `PUT /stations/{id}/profile` n'existe pas (la modification d'une
    station, c'est `PATCH /stations/{id}` ; le profil se lit par
    `GET /stations/{id}/profile`) et le reçu d'une fiche non soldée répond

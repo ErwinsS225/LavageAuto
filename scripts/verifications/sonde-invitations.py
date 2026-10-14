@@ -13,12 +13,14 @@ qui a été accordé : le code ne révèle ni identifiant ni données, l'invité
 devient pas propriétaire, et l'invitation ne sert qu'une fois.
 """
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 import uuid
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8080") + "/api/v1"
+BASE = (sys.argv[1] if len(sys.argv) > 1
+        else "http://127.0.0.1:" + os.environ.get("API_PORT", "8080")) + "/api/v1"
 
 
 class Client:
