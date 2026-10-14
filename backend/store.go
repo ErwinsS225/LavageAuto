@@ -17,10 +17,20 @@ func (a *App) getOrganization(ctx context.Context, id string) (*Organization, er
 	var createdAt time.Time
 	err := a.Pool.QueryRow(ctx, `
 		SELECT id, name, slug, email, phone, address, city, country, currency, timezone,
-		       logo_url, status, notes, created_at
+		       logo_url, status, notes, created_at,
+		       legal_name, trade_name, activity_type, activity_description,
+		       COALESCE(activity_started_on::text, ''), whatsapp, website,
+		       billing_name, billing_address, billing_email, billing_phone,
+		       legal_form, legal_representative, rccm, tax_id, cnps_employer_number,
+		       fiscal_regime, legal_mentions
 		FROM organizations WHERE id = $1`, id,
 	).Scan(&o.ID, &o.Name, &o.Slug, &o.Email, &o.Phone, &o.Address, &o.City, &o.Country,
-		&o.Currency, &o.Timezone, &o.LogoURL, &o.Status, &o.Notes, &createdAt)
+		&o.Currency, &o.Timezone, &o.LogoURL, &o.Status, &o.Notes, &createdAt,
+		&o.LegalName, &o.TradeName, &o.ActivityType, &o.ActivityDescription,
+		&o.ActivityStartedOn, &o.WhatsApp, &o.Website,
+		&o.BillingName, &o.BillingAddress, &o.BillingEmail, &o.BillingPhone,
+		&o.LegalForm, &o.LegalRepresentative, &o.RCCM, &o.TaxID, &o.CNPSEmployerNumber,
+		&o.FiscalRegime, &o.LegalMentions)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -35,12 +45,18 @@ func (a *App) getStation(ctx context.Context, id string) (*Station, error) {
 	var s Station
 	var openingRaw, settingsRaw []byte
 	var createdAt time.Time
+	// La localisation est lue telle quelle ; les coordonnées sont converties en
+	// texte pour rester stables côté interface (« 5.348900 » et non un flottant).
 	err := a.Pool.QueryRow(ctx, `
 		SELECT id, organization_id, name, code, phone, address, city, timezone, currency,
-		       logo_url, opening_hours, settings, is_default, is_active, created_at
+		       logo_url, opening_hours, settings, is_default, is_active, created_at,
+		       country, district, commune, district_area, street, landmark,
+		       COALESCE(latitude::text, ''), COALESCE(longitude::text, ''), billing_address
 		FROM stations WHERE id = $1`, id,
 	).Scan(&s.ID, &s.OrganizationID, &s.Name, &s.Code, &s.Phone, &s.Address, &s.City,
-		&s.Timezone, &s.Currency, &s.LogoURL, &openingRaw, &settingsRaw, &s.IsDefault, &s.IsActive, &createdAt)
+		&s.Timezone, &s.Currency, &s.LogoURL, &openingRaw, &settingsRaw, &s.IsDefault, &s.IsActive, &createdAt,
+		&s.Country, &s.District, &s.Commune, &s.DistrictArea, &s.Street, &s.Landmark,
+		&s.Latitude, &s.Longitude, &s.BillingAddress)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -54,7 +70,6 @@ func (a *App) getStation(ctx context.Context, id string) (*Station, error) {
 	parseJSONB(settingsRaw, &s.Settings)
 	return &s, nil
 }
-
 
 func (a *App) defaultStationID(ctx context.Context, orgID string) (string, error) {
 	var id string
@@ -111,21 +126,21 @@ func (a *App) buildSubscriptionPayload(ctx context.Context, orgID string) (map[s
 	_ = a.Pool.QueryRow(ctx, `SELECT to_char(now(), 'YYYY-MM')`).Scan(&period)
 
 	return map[string]any{
-		"plan_id":              plan.ID,
-		"plan_code":            plan.Code,
-		"plan_name":            plan.Name,
-		"plan_description":     plan.Description,
-		"status":               sub.Status,
-		"status_label":         statusLabel,
-		"price_xof":            plan.PriceXOF,
-		"billing_period":       plan.BillingPeriod,
-		"trial_ends_at":        sub.TrialEndsAt,
-		"current_period_start": sub.CurrentPeriodStart,
-		"current_period_end":   sub.CurrentPeriodEnd,
-		"max_stations":         plan.MaxStations,
-		"max_employees":        plan.MaxEmployees,
+		"plan_id":               plan.ID,
+		"plan_code":             plan.Code,
+		"plan_name":             plan.Name,
+		"plan_description":      plan.Description,
+		"status":                sub.Status,
+		"status_label":          statusLabel,
+		"price_xof":             plan.PriceXOF,
+		"billing_period":        plan.BillingPeriod,
+		"trial_ends_at":         sub.TrialEndsAt,
+		"current_period_start":  sub.CurrentPeriodStart,
+		"current_period_end":    sub.CurrentPeriodEnd,
+		"max_stations":          plan.MaxStations,
+		"max_employees":         plan.MaxEmployees,
 		"max_wash_orders_month": plan.MaxWashOrdersMonth,
-		"features":             plan.Features,
+		"features":              plan.Features,
 		"usage": map[string]any{
 			"period":      period,
 			"wash_orders": washCount,

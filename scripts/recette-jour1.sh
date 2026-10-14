@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# ⚠️  OBSOLÈTE depuis les lots 5 à 8 — ne pas lancer tel quel.
+#     Cette recette décrit le produit d'avant la mise en route : elle attend un
+#     « catalogue d'Abidjan déjà tarifé » et enregistre un lavage juste après
+#     l'inscription. Or le catalogue arrive désormais **sans prix** (aucun tarif
+#     n'est inventé) et une station non activée refuse toute écriture de métier
+#     (409 onboarding_incomplete) : le scénario échoue à l'étape 3.
+#     La recette à jour est le parcours d'acceptation en lignes de commande
+#     (voir docs/onboarding.md §10) ; les scénarios de frontend/tools/rendu/
+#     restent à réécrire pour les treize étapes.
 #
 # Recette de première utilisation : rejoue le « jour 1 » d'une station neuve.
 #
@@ -54,11 +63,17 @@ CAPTURES="${RECETTE_CAPTURES:-$ROOT/recette}"
 LOG="$(mktemp -t washguard-recette.XXXXXX)"
 API_PID=""
 
-source_env() { [ -f "$ROOT/.env" ] && set -a && . "$ROOT/.env" && set +a; return 0; }
-source_env
+# shellcheck source=charger-env.sh
+. "$ROOT/scripts/charger-env.sh"
+charger_env "$ROOT/.env"
+
+# Même résolution que le serveur : DATABASE_URL, sinon NEON_DATABASE_URL (le nom
+# employé par Neon, et celui du gabarit d'installation).
+DATABASE_URL="${DATABASE_URL:-${NEON_DATABASE_URL:-}}"
+export DATABASE_URL
 
 if [ -z "${DATABASE_URL:-}" ]; then
-  echo "DATABASE_URL est introuvable : copiez .env.example vers .env (cp .env.example .env)." >&2
+  echo "DATABASE_URL (ou NEON_DATABASE_URL) est introuvable : copiez .env.example vers .env." >&2
   exit 2
 fi
 

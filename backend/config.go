@@ -70,25 +70,36 @@ type Config struct {
 	ClerkSecretKey         string
 	ClerkPublishableKey    string
 	ClerkJWKSURL           string
-	ClerkAuthorizedParties string
+	ClerkPublicKey         string
+	ClerkAuthorizedParties []string
 	ClerkEnabled           bool
 	StaticDir              string
 	CORSAllowedOrigins     []string
 	SessionCookieSecure    bool
+	SessionCookieSameSite  string // "lax" (défaut) ou "none" (front sur un autre domaine)
 	SessionTTLHours        int
+	AuthMaxFailures        int // échecs de connexion tolérés par fenêtre
+	RegisterMaxPerHour     int // inscriptions tolérées par heure et par IP
 	SeedDemo               bool
+	PlatformAdminPassword  string
 }
 
 func loadConfig() Config {
 	cfg := Config{
-		Env:                 envOr("APP_ENV", "development"),
-		Host:                envOr("API_HOST", "0.0.0.0"),
-		Port:                envInt("API_PORT", 3000),
-		DatabaseURL:         envOr("DATABASE_URL", os.Getenv("NEON_DATABASE_URL")),
-		StaticDir:           os.Getenv("STATIC_DIR"),
-		SessionCookieSecure: os.Getenv("SESSION_COOKIE_SECURE") == "true",
-		SessionTTLHours:     envInt("SESSION_TTL_HOURS", 720), // 30 jours
-		SeedDemo:            os.Getenv("SEED_DEMO") != "false",
+		Env:                   envOr("APP_ENV", "development"),
+		Host:                  envOr("API_HOST", "0.0.0.0"),
+		Port:                  envInt("API_PORT", 3000),
+		DatabaseURL:           envOr("DATABASE_URL", os.Getenv("NEON_DATABASE_URL")),
+		StaticDir:             os.Getenv("STATIC_DIR"),
+		SessionCookieSecure:   os.Getenv("SESSION_COOKIE_SECURE") == "true",
+		SessionCookieSameSite: strings.ToLower(envOr("SESSION_COOKIE_SAMESITE", "lax")),
+		SessionTTLHours:       envInt("SESSION_TTL_HOURS", 720), // 30 jours
+		AuthMaxFailures:       envInt("AUTH_MAX_FAILURES", 10),
+		RegisterMaxPerHour:    envInt("REGISTER_MAX_PER_HOUR", 5),
+		SeedDemo:              os.Getenv("SEED_DEMO") != "false",
+		// Compte de démonstration de l'espace plateforme : il n'est créé que
+		// hors production (voir seedDemo) et sert aux essais locaux.
+		PlatformAdminPassword: envOr("PLATFORM_ADMIN_PASSWORD", "admin1234"),
 	}
 	if raw := os.Getenv("CORS_ALLOWED_ORIGINS"); raw != "" {
 		for _, o := range splitCSV(raw) {
@@ -100,7 +111,22 @@ func loadConfig() Config {
 	cfg.ClerkSecretKey = os.Getenv("CLERK_SECRET_KEY")
 	cfg.ClerkPublishableKey = os.Getenv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY")
 	cfg.ClerkJWKSURL = envOr("JWKS_URL_CLERK", os.Getenv("NEXT_PUBLIC_CLERK_API_URL"))
-	cfg.ClerkAuthorizedParties = os.Getenv("CLERK_AUTHORIZED_PARTIES")
+	// Clé publique statique (PEM, optionnelle) : elle permet de vérifier les
+	// jetons sans interroger l'adresse JWKS — utile quand la station n'a pas
+	// d'accès réseau permanent. L'adresse JWKS reste prioritaire car elle
+	// suit la rotation des clés de Clerk.
+	cfg.ClerkPublicKey = envOr("JWKS_PUBLIC_KEY", os.Getenv("CLERK_PUBLIC_KEY"))
+	// Origines autorisées du jeton Clerk (claim `azp`) : la variable dédiée si
+	// elle est posée, sinon l'URL publique de l'application et les origines
+	// déjà déclarées pour le CORS. Sans cette liste, un jeton Clerk émis pour
+	// une autre application serait accepté.
+	for _, o := range splitCSV(os.Getenv("CLERK_AUTHORIZED_PARTIES")) {
+		cfg.ClerkAuthorizedParties = append(cfg.ClerkAuthorizedParties, o)
+	}
+	if appURL := os.Getenv("APP_URL"); appURL != "" {
+		cfg.ClerkAuthorizedParties = append(cfg.ClerkAuthorizedParties, strings.TrimRight(appURL, "/"))
+	}
+	cfg.ClerkAuthorizedParties = append(cfg.ClerkAuthorizedParties, cfg.CORSAllowedOrigins...)
 	cfg.ClerkEnabled = cfg.ClerkSecretKey != ""
 	if cfg.ClerkEnabled && cfg.ClerkJWKSURL == "" && cfg.ClerkPublishableKey != "" {
 		cfg.ClerkJWKSURL = jwksFromPublishableKey(cfg.ClerkPublishableKey)

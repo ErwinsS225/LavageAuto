@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Eye, Plus, Search, UserRound } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { Button, Card, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Spinner, StatCard } from '@/components/ui'
+import { Button, Card, EmptyState, ErrorState, Field, Input, Modal, PageHeader, SkeletonRows, Spinner, StatCard } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
 import { api, ApiError, query } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -107,7 +107,7 @@ export default function CustomersPage() {
         </div>
 
         {listQuery.isLoading ? (
-          <Spinner label="Chargement des clients…" />
+          <SkeletonRows rows={6} />
         ) : listQuery.isError ? (
           <ErrorState message="Impossible de charger les clients." onRetry={() => void listQuery.refetch()} />
         ) : customers.length === 0 ? (

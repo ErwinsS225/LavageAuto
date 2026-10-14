@@ -9,7 +9,15 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PORT="${API_PORT:-8080}"
+
+# .env d'abord (c'est lui qui fixe le port réellement écouté) : sans cela, le
+# script annonçait 8080 alors que l'application, elle, écoute 3000 — et les
+# téléphones de la station recevaient une adresse morte. Une variable passée à
+# la main garde la priorité sur le fichier.
+# shellcheck source=charger-env.sh
+. "$ROOT/scripts/charger-env.sh"
+charger_env "$ROOT/.env"
+PORT="${API_PORT:-3000}"
 
 VERT=$'\033[32m'; ROUGE=$'\033[31m'; GRIS=$'\033[90m'; FIN=$'\033[0m'
 

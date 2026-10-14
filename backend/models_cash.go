@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -51,7 +50,7 @@ func cashSessionToJSON(s *CashSession) map[string]any {
 		"status":            s.Status,
 		"opened_by":         s.OpenedBy,
 		"opened_by_name":    s.OpenedByName,
-		"opened_at":         s.OpenedAt.Format(time.RFC3339),
+		"opened_at":         s.OpenedAt.Format(timeLayout),
 		"opening_float_xof": s.OpeningFloatXOF,
 		"expected_cash_xof": s.ExpectedCashXOF,
 		"counted_cash_xof":  s.CountedCashXOF,
@@ -73,16 +72,27 @@ func cashSessionToJSON(s *CashSession) map[string]any {
 	}
 }
 
-// getOwnedCashSession charge une session et vérifie son organisation.
+// getOwnedCashSession charge une session en filtrant par entreprise dans la
+// requête elle-même : la session d'une autre entreprise est introuvable.
 func (a *App) getOwnedCashSession(ctx context.Context, id, orgID string) (*CashSession, error) {
 	row := a.Pool.QueryRow(ctx,
-		`SELECT `+cashSessionColumns+` FROM cash_sessions WHERE id = $1`, id)
-	s, actualOrg, err := scanCashSessionWithOrg(row)
+		`SELECT `+cashSessionColumns+` FROM cash_sessions WHERE id = $1 AND organization_id = $2`, id, orgID)
+	s, _, err := scanCashSessionWithOrg(row)
 	if err != nil {
 		return nil, err
 	}
-	if orgID != "" && actualOrg != orgID {
+	return s, nil
+}
+
+// userCashSession : session d'une entreprise, limitée à la station du compte
+// quand le rôle y est rattaché.
+func (a *App) userCashSession(ctx context.Context, user *User, id string) (*CashSession, error) {
+	session, err := a.getOwnedCashSession(ctx, id, deref(user.OrganizationID))
+	if err != nil {
+		return nil, err
+	}
+	if forced := scopedStationID(user); forced != "" && forced != session.StationID {
 		return nil, errNotFound
 	}
-	return s, nil
+	return session, nil
 }

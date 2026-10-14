@@ -37,6 +37,33 @@ type Organization struct {
 	Status    string    `json:"status"`
 	Notes     string    `json:"notes,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// Identité commerciale (facultative : un compte neuf n'a que son nom).
+	LegalName           string `json:"legal_name"`
+	TradeName           string `json:"trade_name"`
+	ActivityType        string `json:"activity_type"`
+	ActivityDescription string `json:"activity_description"`
+	// Date d'ouverture, au format « 2006-01-02 », vide si non renseignée
+	// (colonne DATE, consommée telle quelle par l'interface).
+	ActivityStartedOn string `json:"activity_started_on"`
+	WhatsApp          string `json:"whatsapp"`
+	Website           string `json:"website"`
+
+	// Facturation : à qui adresser la facture, si c'est différent du siège.
+	BillingName    string `json:"billing_name"`
+	BillingAddress string `json:"billing_address"`
+	BillingEmail   string `json:"billing_email"`
+	BillingPhone   string `json:"billing_phone"`
+
+	// Mentions administratives : la valeur est ici, son état de vérification
+	// vit dans `organization_registry_fields` (voir org_profile.go).
+	LegalForm           string `json:"legal_form"`
+	LegalRepresentative string `json:"legal_representative"`
+	RCCM                string `json:"rccm"`
+	TaxID               string `json:"tax_id"`
+	CNPSEmployerNumber  string `json:"cnps_employer_number"`
+	FiscalRegime        string `json:"fiscal_regime"`
+	LegalMentions       string `json:"legal_mentions"`
 }
 
 type Station struct {
@@ -54,7 +81,19 @@ type Station struct {
 	Settings       map[string]any `json:"settings"`
 	IsDefault      bool           `json:"is_default"`
 	IsActive       bool           `json:"is_active"`
-	CreatedAt      time.Time      `json:"created_at"`
+
+	// Localisation : le pays, la ville et le quartier servent à retrouver la
+	// station, les coordonnées à l'afficher sur une carte (facultatives).
+	Country        string    `json:"country"`
+	District       string    `json:"district"`
+	Commune        string    `json:"commune"`
+	DistrictArea   string    `json:"district_area"`
+	Street         string    `json:"street"`
+	Landmark       string    `json:"landmark"`
+	Latitude       string    `json:"latitude"`
+	Longitude      string    `json:"longitude"`
+	BillingAddress string    `json:"billing_address"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type Subscription struct {
@@ -106,6 +145,21 @@ type Service struct {
 	DurationMinutes int    `json:"duration_minutes"`
 	SortOrder       int    `json:"sort_order"`
 	IsActive        bool   `json:"is_active"`
+	// Depuis le lot 5 : famille, code court, contenu détaillé et consignes.
+	Code           string   `json:"code"`
+	FamilyCode     string   `json:"family_code"`
+	FamilyName     string   `json:"family_name"`
+	TemplateCode   string   `json:"template_code"`
+	Includes       []string `json:"includes"`
+	EquipmentNotes string   `json:"equipment_notes"`
+	SafetyNotes    string   `json:"safety_notes"`
+	Preconditions  string   `json:"preconditions"`
+	// « Gratuit » est une décision : une prestation non tarifée reste à
+	// price_xof = 0 sans is_free, et le serveur refuse de la vendre.
+	IsFree      bool `json:"is_free"`
+	IsQuoteOnly bool `json:"is_quote_only"`
+	// Vrai quand aucun tarif utilisable n'existe : l'écran affiche « à tarifer ».
+	NeedsPrice bool `json:"needs_price"`
 }
 
 type Customer struct {
@@ -132,38 +186,53 @@ type WashOrderItem struct {
 	UnitPriceXOF int    `json:"unit_price_xof"`
 	Quantity     int    `json:"quantity"`
 	LineTotalXOF int    `json:"line_total_xof"`
+	// D'où vient le prix appliqué (`client_contract`, `service_category`…) :
+	// une ligne ancienne doit pouvoir s'expliquer sans rejouer la grille.
+	PriceSource      string `json:"price_source"`
+	PriceSourceLabel string `json:"price_source_label"`
+	// Options retenues au moment de la vente, avec leur prix d'alors.
+	Options         []optionRetenue `json:"options"`
+	OptionsTotalXOF int             `json:"options_total_xof"`
 }
 
 type WashOrder struct {
-	ID                   string          `json:"id"`
-	OrganizationID       string          `json:"organization_id"`
-	StationID            string          `json:"station_id"`
-	Reference            string          `json:"reference"`
-	CustomerID           *string         `json:"customer_id"`
-	CustomerName         string          `json:"customer_name"`
-	VehicleCategoryID    *string         `json:"vehicle_category_id"`
-	VehicleCategoryName  string          `json:"vehicle_category_name"`
-	Plate                string          `json:"plate"`
-	EmployeeID           *string         `json:"employee_id"`
-	EmployeeName         string          `json:"employee_name"`
-	Status               string          `json:"status"`
-	SubtotalXOF          int             `json:"subtotal_xof"`
-	DiscountXOF          int             `json:"discount_xof"`
-	DiscountReason       string          `json:"discount_reason"`
-	TotalXOF             int             `json:"total_xof"`
-	Notes                string          `json:"notes"`
-	IncidentNote         *string         `json:"incident_note"`
-	IncidentReportedAt   *time.Time      `json:"incident_reported_at"`
-	IncidentReporterName *string         `json:"incident_reporter_name"`
-	CancelReason         *string         `json:"cancel_reason"`
-	CreatedBy            string          `json:"created_by"`
-	CreatedByName        string          `json:"created_by_name"`
-	CreatedAt            time.Time       `json:"created_at"`
-	StartedAt            *time.Time      `json:"started_at"`
-	CompletedAt          *time.Time      `json:"completed_at"`
-	CanceledAt           *time.Time      `json:"canceled_at"`
-	BusinessDay          string          `json:"business_day"`
-	Items                []WashOrderItem `json:"items"`
+	ID                   string     `json:"id"`
+	OrganizationID       string     `json:"organization_id"`
+	StationID            string     `json:"station_id"`
+	Reference            string     `json:"reference"`
+	CustomerID           *string    `json:"customer_id"`
+	CustomerName         string     `json:"customer_name"`
+	VehicleCategoryID    *string    `json:"vehicle_category_id"`
+	VehicleCategoryName  string     `json:"vehicle_category_name"`
+	VehicleUsageID       *string    `json:"vehicle_usage_id"`
+	VehicleUsageName     string     `json:"vehicle_usage_name"`
+	Plate                string     `json:"plate"`
+	EmployeeID           *string    `json:"employee_id"`
+	EmployeeName         string     `json:"employee_name"`
+	Status               string     `json:"status"`
+	SubtotalXOF          int        `json:"subtotal_xof"`
+	DiscountXOF          int        `json:"discount_xof"`
+	DiscountReason       string     `json:"discount_reason"`
+	TotalXOF             int        `json:"total_xof"`
+	Notes                string     `json:"notes"`
+	IncidentNote         *string    `json:"incident_note"`
+	IncidentReportedAt   *time.Time `json:"incident_reported_at"`
+	IncidentReporterName *string    `json:"incident_reporter_name"`
+	CancelReason         *string    `json:"cancel_reason"`
+	CreatedBy            string     `json:"created_by"`
+	CreatedByName        string     `json:"created_by_name"`
+	CreatedAt            time.Time  `json:"created_at"`
+	StartedAt            *time.Time `json:"started_at"`
+	CompletedAt          *time.Time `json:"completed_at"`
+	CanceledAt           *time.Time `json:"canceled_at"`
+	BusinessDay          string     `json:"business_day"`
+	// Le passage par le contrôle qualité et la remise du véhicule laissent une
+	// trace datée : « le contrôle a été fait » et « le véhicule est prêt » ne se
+	// déduisent pas du statut courant, ils se constatent.
+	QualityCheckedAt *time.Time      `json:"quality_checked_at"`
+	ReadyAt          *time.Time      `json:"ready_at"`
+	DeliveredAt      *time.Time      `json:"delivered_at"`
+	Items            []WashOrderItem `json:"items"`
 }
 
 type CashSession struct {
@@ -196,23 +265,28 @@ type CashSession struct {
 }
 
 type Payment struct {
-	ID             string    `json:"id"`
-	OrganizationID string    `json:"organization_id"`
-	StationID      string    `json:"station_id"`
-	WashOrderID    *string   `json:"wash_order_id"`
-	CustomerID     *string   `json:"customer_id"`
-	Kind           string    `json:"kind"`
-	Method         string    `json:"method"`
-	AmountXOF      int       `json:"amount_xof"`
-	Reference      string    `json:"reference"`
-	Note           string    `json:"note"`
-	PaidAt         time.Time `json:"paid_at"`
-	BusinessDay    string    `json:"business_day"`
-	CashSessionID  *string   `json:"cash_session_id"`
-	ReceivedBy     string    `json:"received_by"`
-	ReceivedByName string    `json:"received_by_name"`
-	Status         string    `json:"status"`
-	VoidReason     *string   `json:"void_reason"`
+	ID             string  `json:"id"`
+	OrganizationID string  `json:"organization_id"`
+	StationID      string  `json:"station_id"`
+	WashOrderID    *string `json:"wash_order_id"`
+	CustomerID     *string `json:"customer_id"`
+	Kind           string  `json:"kind"`
+	Method         string  `json:"method"`
+	// PaymentMethodID : le moyen **déclaré** par la station (espèces, Orange
+	// Money, Wave…). Vide pour les encaissements antérieurs à la table — on ne
+	// leur invente pas une origine après coup.
+	PaymentMethodID   *string   `json:"payment_method_id"`
+	PaymentMethodName string    `json:"payment_method_name"`
+	AmountXOF         int       `json:"amount_xof"`
+	Reference         string    `json:"reference"`
+	Note              string    `json:"note"`
+	PaidAt            time.Time `json:"paid_at"`
+	BusinessDay       string    `json:"business_day"`
+	CashSessionID     *string   `json:"cash_session_id"`
+	ReceivedBy        string    `json:"received_by"`
+	ReceivedByName    string    `json:"received_by_name"`
+	Status            string    `json:"status"`
+	VoidReason        *string   `json:"void_reason"`
 }
 
 type Expense struct {
@@ -247,4 +321,3 @@ type AuditEntry struct {
 	Details        map[string]any `json:"details"`
 	CreatedAt      time.Time      `json:"created_at"`
 }
-

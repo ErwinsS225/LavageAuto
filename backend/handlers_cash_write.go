@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -16,22 +17,29 @@ func (a *App) handleCashSessionOpen(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var body struct {
-		StationID      string `json:"station_id"`
-		OpeningFloatXOF int   `json:"opening_float_xof"`
-		Note           string `json:"note"`
+		StationID       string `json:"station_id"`
+		OpeningFloatXOF int    `json:"opening_float_xof"`
+		Note            string `json:"note"`
 	}
 	if err := decodeBody(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", "Corps de requête invalide.", nil)
 		return
 	}
-	stationID := body.StationID
-	if stationID == "" {
-		stationID = deref(user.StationID)
+	stationID, err := a.resolveStation(ctx, user, body.StationID)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	// Rôles autorisés à tenir la caisse : réglage de la station, appliqué ici
+	// comme à la clôture (vérifié sur des données, pas seulement affiché).
+	if autorise, err := a.roleAutoriseCaisse(ctx, stationID, user); err == nil && !autorise {
+		writeAPIError(w, errCaisseRole)
+		return
 	}
 
 	// Une seule session ouverte par station.
 	var existing string
-	err := a.Pool.QueryRow(ctx, `
+	err = a.Pool.QueryRow(ctx, `
 		SELECT id FROM cash_sessions WHERE station_id = $1 AND status = 'open' LIMIT 1`,
 		stationID).Scan(&existing)
 	if err == nil {
@@ -75,13 +83,17 @@ func (a *App) handleCashSessionClose(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 
-	session, err := a.getOwnedCashSession(ctx, id, deref(user.OrganizationID))
+	session, err := a.userCashSession(ctx, user, id)
 	if err != nil || session == nil {
 		writeError(w, http.StatusNotFound, "not_found", "Session introuvable.", nil)
 		return
 	}
 	if session.Status != "open" {
 		writeError(w, http.StatusConflict, "conflict", "Cette session est déjà clôturée.", nil)
+		return
+	}
+	if autorise, err := a.roleAutoriseCaisse(ctx, session.StationID, user); err == nil && !autorise {
+		writeAPIError(w, errCaisseRole)
 		return
 	}
 
@@ -97,6 +109,23 @@ func (a *App) handleCashSessionClose(w http.ResponseWriter, r *http.Request) {
 		counted = session.ExpectedCashXOF
 	}
 	variance := counted - session.ExpectedCashXOF
+
+	// Écart au-delà de la tolérance déclarée : la clôture reste possible, mais
+	// elle doit s'expliquer par écrit. Le seuil vient des paramètres de caisse,
+	// jamais d'une constante cachée dans le code.
+	if parametres, err := a.lireParametresCaisse(ctx, session.StationID); err == nil {
+		ecart := variance
+		if ecart < 0 {
+			ecart = -ecart
+		}
+		if ecart > parametres.DiscrepancyToleranceXOF && strings.TrimSpace(body.Note) == "" {
+			writeError(w, http.StatusBadRequest, "validation_error",
+				"L'écart de caisse ("+itoa(variance)+" FCFA) dépasse la tolérance de "+
+					itoa(parametres.DiscrepancyToleranceXOF)+" FCFA : un motif écrit est obligatoire.",
+				map[string]string{"note": "Motif de l'écart requis"})
+			return
+		}
+	}
 
 	_, err = a.Pool.Exec(ctx, `
 		UPDATE cash_sessions
@@ -131,7 +160,7 @@ func (a *App) handleCashSessionClose(w http.ResponseWriter, r *http.Request) {
 // POST /cash/sessions/:id/reopen — réouverture par le gérant / propriétaire.
 func (a *App) handleCashSessionReopen(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
-	if user.Role == "cashier" || user.Role == "washer" {
+	if !hasPermission(user, "cash:reopen") {
 		writeError(w, http.StatusForbidden, "forbidden",
 			"La réouverture d'une caisse nécessite les droits du gérant.", nil)
 		return
@@ -139,7 +168,7 @@ func (a *App) handleCashSessionReopen(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 
-	session, err := a.getOwnedCashSession(ctx, id, deref(user.OrganizationID))
+	session, err := a.userCashSession(ctx, user, id)
 	if err != nil || session == nil {
 		writeError(w, http.StatusNotFound, "not_found", "Session introuvable.", nil)
 		return

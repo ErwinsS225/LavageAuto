@@ -13,10 +13,11 @@ import {
   Sparkles,
 } from 'lucide-react'
 
-import { Button, Card, EmptyState, Modal, Spinner, Textarea } from '@/components/ui'
+import { Button, Card, EmptyState, Modal, ScreenHero, Segmented, Spinner, StatCard, Textarea } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
+import { ApiError } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
-import { formatTime, formatXOF } from '@/lib/format'
+import { formatNumber, formatTime, formatXOF } from '@/lib/format'
 import {
   useReportTaskIncident,
   useUpdateTaskStatus,
@@ -52,24 +53,36 @@ export default function WasherPortalPage() {
   const todayStr = new Date().toISOString().slice(0, 10)
 
   // Filter tasks
-  const pendingTasks = tasks.filter((t) => t.status === 'pending' || t.status === 'in_progress')
+  // « En cours » au sens du laveur : tout ce qui n'est pas encore livré, y
+  // compris le contrôle qualité et un véhicule prêt qui attend son client.
+  const enCours = ['pending', 'in_progress', 'quality_check', 'ready', 'disputed']
+  const pendingTasks = tasks.filter((t) => enCours.includes(t.status))
   const todayCompletedTasks = tasks.filter((t) => t.status === 'completed' && t.business_day === todayStr)
   const allTasks = tasks
 
   const displayedTasks =
     activeTab === 'pending' ? pendingTasks : activeTab === 'completed' ? todayCompletedTasks : allTasks
 
-  async function handleStatusChange(task: WasherTask, nextStatus: 'in_progress' | 'completed') {
+  async function handleStatusChange(
+    task: WasherTask,
+    nextStatus: 'in_progress' | 'quality_check' | 'completed',
+  ) {
     setUpdatingId(task.id)
     try {
       await statusMutation.mutateAsync({ id: task.id, status: nextStatus })
       if (nextStatus === 'in_progress') {
         toast.success(`Véhicule ${task.plate || task.reference} pris en charge ! Bon lavage.`)
+      } else if (nextStatus === 'quality_check') {
+        toast.success(`Lavage terminé pour ${task.plate || task.reference} : véhicule au contrôle qualité.`)
       } else {
-        toast.success(`Lavage terminé pour ${task.plate || task.reference} ! Prêt pour inspection.`)
+        toast.success(`Fiche ${task.reference} clôturée.`)
       }
-    } catch {
-      toast.error("Impossible de mettre à jour l'avancement.")
+    } catch (caught) {
+      // Le serveur explique son refus (fiche non encaissée, transition
+      // interdite…) : on le laisse parler plutôt que d'inventer une raison.
+      toast.error(
+        caught instanceof ApiError ? caught.message : "Impossible de mettre à jour l'avancement.",
+      )
     } finally {
       setUpdatingId(null)
     }
@@ -92,116 +105,78 @@ export default function WasherPortalPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5 pb-12">
       {/* En-tête Laveur */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-gradient-to-r from-brand-soft via-surface to-surface p-4 sm:p-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand text-brand-ink shadow-sm">
-            <Droplets size={26} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-ink">Espace Laveur</h1>
-              <span className="badge badge-brand">Poste Lavage</span>
-            </div>
-            <p className="text-xs text-ink-muted">
-              Bonjour <span className="font-semibold text-ink">{me?.user.full_name}</span> · {me?.station?.name}
-            </p>
-          </div>
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={<RotateCw size={14} className={tasksQuery.isFetching ? 'animate-spin' : ''} />}
-          onClick={() => {
-            void tasksQuery.refetch()
-            void perfQuery.refetch()
-          }}
-        >
-          Actualiser
-        </Button>
-      </div>
+      <ScreenHero
+        icon={<Droplets size={22} />}
+        title="Espace Laveur"
+        badge={<span className="badge badge-brand">Poste lavage</span>}
+        subtitle={
+          <>
+            Bonjour <span className="font-semibold text-ink">{me?.user.full_name}</span> · {me?.station?.name}
+          </>
+        }
+        actions={
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<RotateCw size={14} className={tasksQuery.isFetching ? 'animate-spin' : ''} />}
+            onClick={() => {
+              void tasksQuery.refetch()
+              void perfQuery.refetch()
+            }}
+          >
+            Actualiser
+          </Button>
+        }
+      />
 
       {/* Mes indicateurs de performance personnels */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="p-3.5">
-          <div className="flex items-center gap-2 text-xs font-medium text-ink-muted">
-            <Clock size={14} className="text-warning" />
-            <span>À laver</span>
-          </div>
-          <p className="mt-1 text-2xl font-bold tabular text-ink">{pendingTasks.length}</p>
-          <p className="text-[11px] text-ink-muted">En attente / en cours</p>
-        </Card>
-
-        <Card className="p-3.5">
-          <div className="flex items-center gap-2 text-xs font-medium text-ink-muted">
-            <CheckCircle2 size={14} className="text-success" />
-            <span>Faits aujourd’hui</span>
-          </div>
-          <p className="mt-1 text-2xl font-bold tabular text-success">{perf?.washes_today ?? todayCompletedTasks.length}</p>
-          <p className="text-[11px] text-ink-muted">Véhicules nettoyés</p>
-        </Card>
-
-        <Card className="p-3.5">
-          <div className="flex items-center gap-2 text-xs font-medium text-ink-muted">
-            <Flame size={14} className="text-brand" />
-            <span>Total ce mois</span>
-          </div>
-          <p className="mt-1 text-2xl font-bold tabular text-brand">{perf?.washes_month ?? allTasks.filter((t) => t.status === 'completed').length}</p>
-          <p className="text-[11px] text-ink-muted">Lavages comptabilisés</p>
-        </Card>
-
-        <Card className="p-3.5">
-          <div className="flex items-center gap-2 text-xs font-medium text-ink-muted">
-            <HandCoins size={14} className="text-amber-500" />
-            <span>Mes commissions</span>
-          </div>
-          <p className="mt-1 text-2xl font-bold tabular text-amber-500">
-            {formatXOF(perf?.commission_month_xof ?? (perf?.washes_month ?? 0) * 500)}
-          </p>
-          <p className="text-[11px] text-ink-muted">{perf?.commission_rate_label ?? '500 FCFA / lavage'}</p>
-        </Card>
+        <StatCard
+          label="À laver"
+          value={formatNumber(pendingTasks.length)}
+          hint="En attente / en cours"
+          icon={<Clock size={16} />}
+          tone="warning"
+        />
+        <StatCard
+          label="Faits aujourd’hui"
+          value={formatNumber(perf?.washes_today ?? todayCompletedTasks.length)}
+          hint="Véhicules nettoyés"
+          icon={<CheckCircle2 size={16} />}
+          tone="success"
+          delay={0.05}
+        />
+        <StatCard
+          label="Total ce mois"
+          value={formatNumber(perf?.washes_month ?? allTasks.filter((t) => t.status === 'completed').length)}
+          hint="Lavages comptabilisés"
+          icon={<Flame size={16} />}
+          tone="brand"
+          delay={0.1}
+        />
+        <StatCard
+          label="Mes commissions"
+          value={formatXOF(perf?.commission_month_xof ?? (perf?.washes_month ?? 0) * 500)}
+          hint={perf?.commission_rate_label ?? '500 FCFA / lavage'}
+          icon={<HandCoins size={16} />}
+          tone="warning"
+          delay={0.15}
+        />
       </div>
 
-      {/* Sélecteur d'onglets */}
-      <div className="flex rounded-xl border border-line bg-surface-muted p-1">
-        <button
-          type="button"
-          onClick={() => setActiveTab('pending')}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-semibold transition ${
-            activeTab === 'pending' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
-          }`}
-        >
-          <Clock size={15} />
-          <span>Mes tâches à faire</span>
-          {pendingTasks.length > 0 && (
-            <span className="rounded-full bg-warning px-1.5 py-0.2 text-[10px] font-bold text-black">
-              {pendingTasks.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('completed')}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-semibold transition ${
-            activeTab === 'completed' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
-          }`}
-        >
-          <CheckCircle2 size={15} />
-          <span>Terminés aujourd’hui</span>
-          <span className="text-[11px] text-ink-muted">({todayCompletedTasks.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('all')}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-semibold transition ${
-            activeTab === 'all' ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
-          }`}
-        >
-          <Car size={15} />
-          <span>Historique</span>
-        </button>
-      </div>
+      {/* Sélecteur d'onglets : trois vues, indicateur animé partagé */}
+      <Segmented
+        layoutId="espace-laveur"
+        size="md"
+        equal
+        value={activeTab}
+        onChange={setActiveTab}
+        options={[
+          { value: 'pending', label: 'Mes tâches à faire', icon: <Clock size={15} />, count: pendingTasks.length },
+          { value: 'completed', label: 'Terminés aujourd’hui', icon: <CheckCircle2 size={15} /> },
+          { value: 'all', label: 'Historique', icon: <Car size={15} /> },
+        ]}
+      />
 
       {/* Liste des fiches */}
       {tasksQuery.isLoading ? (
@@ -230,6 +205,8 @@ export default function WasherPortalPage() {
             const isPending = task.status === 'pending'
             const isInProgress = task.status === 'in_progress'
             const isCompleted = task.status === 'completed'
+            const isQualityCheck = task.status === 'quality_check'
+            const isReady = task.status === 'ready'
             const isUpdating = updatingId === task.id
 
             return (
@@ -351,15 +328,42 @@ export default function WasherPortalPage() {
                       )}
 
                       {isInProgress && (
+                        <>
+                          <Button
+                            variant="primary"
+                            loading={isUpdating}
+                            icon={<CheckCircle2 size={16} />}
+                            onClick={() => void handleStatusChange(task, 'quality_check')}
+                            className="min-w-44 bg-success text-white hover:bg-emerald-600 text-sm font-bold"
+                          >
+                            Lavage terminé
+                          </Button>
+                          {/* Clôturer une fiche suppose qu'elle soit encaissée :
+                              le serveur refuse sinon, avec le montant restant. */}
+                          <Button
+                            variant="ghost"
+                            loading={isUpdating}
+                            onClick={() => void handleStatusChange(task, 'completed')}
+                          >
+                            Clôturer la fiche
+                          </Button>
+                        </>
+                      )}
+
+                      {isQualityCheck && (
                         <Button
-                          variant="primary"
+                          variant="ghost"
                           loading={isUpdating}
-                          icon={<CheckCircle2 size={16} />}
-                          onClick={() => void handleStatusChange(task, 'completed')}
-                          className="min-w-44 bg-success text-white hover:bg-emerald-600 text-sm font-bold"
+                          onClick={() => void handleStatusChange(task, 'in_progress')}
                         >
-                          Terminer le lavage
+                          Reprendre le lavage
                         </Button>
+                      )}
+
+                      {isReady && (
+                        <span className="text-xs font-medium text-ink-muted">
+                          Véhicule prêt : remise au client par la caisse.
+                        </span>
                       )}
 
                       {isCompleted && (

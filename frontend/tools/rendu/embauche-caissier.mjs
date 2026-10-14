@@ -1,4 +1,10 @@
 /**
+ * ⚠️  Scénario antérieur aux lots 5 à 8 : il attend un catalogue « déjà tarifé »
+ *     et enregistre un lavage juste après l'inscription. Le produit livré fait
+ *     l'inverse : le catalogue arrive sans prix (aucun tarif n'est inventé) et
+ *     l'exploitation reste fermée jusqu'à l'activation (409 onboarding_incomplete).
+ *     Ce parcours est donc à réécrire pour les treize étapes de mise en route
+ *     (voir docs/onboarding.md) avant d'être rejoué.
  * Embauche d'un caissier — parcours réel à deux navigateurs.
  *
  * C'est le maillon sans lequel la station ne peut pas démarrer : si le

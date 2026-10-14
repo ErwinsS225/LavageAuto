@@ -1,10 +1,11 @@
 /**
- * Formulaire d'inscription — même identité visuelle que LoginForm (LavPro).
+ * Formulaire d'inscription — même identité visuelle que LoginForm.
  * Crée l'organisation, sa première station et le compte propriétaire via
  * l'API existante (useAuth.register).
  */
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 
 import { Button, Field, Input } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
@@ -75,8 +76,10 @@ export default function RegisterForm() {
         phone,
         password,
       })
-      toast.success('Compte créé. Bienvenue sur LavPro !')
-      navigate('/tableau-de-bord', { replace: true })
+      toast.success('Compte créé. Bienvenue sur WashGuard !')
+      // Le compte neuf a une station à décrire : on entre dans la mise en route
+      // plutôt que d'ouvrir un tableau de bord vide.
+      navigate('/onboarding', { replace: true })
     } catch (caught) {
       if (caught instanceof ApiError) {
         setError(caught.message)
@@ -89,12 +92,12 @@ export default function RegisterForm() {
     }
   }
 
-  const inputClass = 'h-10 rounded-lg'
+  const inputClass = 'h-10'
 
   return (
     <div className="mx-auto flex w-full max-w-sm flex-col justify-center md:mx-0">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Créez votre compte</h1>
+        <h1 className="text-xl font-bold tracking-tight text-ink">Créez votre compte</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
           Commencez à simplifier la gestion de votre station.
         </p>
@@ -201,14 +204,26 @@ export default function RegisterForm() {
           )}
         </Field>
 
-        {error ? (
-          <p className="rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
-        ) : null}
+        <AnimatePresence>
+          {error ? (
+            <motion.p
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="rounded-field border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger"
+            >
+              {error}
+            </motion.p>
+          ) : null}
+        </AnimatePresence>
 
         <Button
           type="submit"
           variant="primary"
-          className="mt-1 h-10 w-full rounded-lg bg-[#47253F]! text-white! hover:bg-[#3a1f35]! focus-visible:outline-[#47253F]/40"
+          size="lg"
+          block
+          className="mt-1"
           loading={loading}
         >
           Créer mon compte
@@ -217,8 +232,17 @@ export default function RegisterForm() {
 
       <p className="mt-4 text-center text-sm text-ink-muted md:text-left">
         Vous avez déjà un compte ?{' '}
-        <Link to="/connexion" className="font-medium text-[#47253F] hover:underline">
+        <Link to="/connexion" className="link-soft font-medium">
           Se connecter
+        </Link>
+      </p>
+
+      {/* Rejoindre une entreprise n'est pas une inscription classique : le
+          compte appartient à une entreprise existante, il n'en crée pas une. */}
+      <p className="mt-2 text-center text-xs text-ink-subtle md:text-left">
+        Vous avez reçu une invitation ?{' '}
+        <Link to="/rejoindre" className="link-soft font-medium">
+          Rejoindre une entreprise
         </Link>
       </p>
     </div>

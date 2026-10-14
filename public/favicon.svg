@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="WashGuard">
+  <!-- Identité de l'application : une goutte d'eau (le lavage) posée sur un
+       éclat de propreté, dans le bleu de la marque (#1f6feb). -->
+  <rect width="64" height="64" rx="14" fill="#1f6feb" />
+  <path
+    d="M32 12c6.6 8.1 11 13.9 11 19.9C43 39.7 38.1 45 32 45s-11-5.3-11-13.1C21 25.9 25.4 20.1 32 12Z"
+    fill="#ffffff" />
+  <path d="M27.5 32.5c0 3 2 5.2 4.9 5.6" stroke="#1f6feb" stroke-width="3" stroke-linecap="round"
+    fill="none" />
+  <!-- Éclat : la voiture propre. -->
+  <path d="M46 40.5l1.6 3.4 3.4 1.6-3.4 1.6L46 50.5l-1.6-3.4L41 45.5l3.4-1.6L46 40.5Z" fill="#bfe0ff" />
+  <circle cx="18" cy="47" r="2.5" fill="#bfe0ff" />
+</svg>

@@ -67,9 +67,16 @@ verifier_outil "Git"     "git --version"           "lancez : brew install git"
 # projet) ou un PostgreSQL déjà installé sur la machine (Postgres.app, Homebrew).
 # Docker n'est donc pas obligatoire : on regarde d'abord si une base répond.
 if [ -f .env ]; then
-  # shellcheck disable=SC1091
-  set -a; . ./.env; set +a
+  # shellcheck source=charger-env.sh
+  . "$ROOT/scripts/charger-env.sh"
+  charger_env "$ROOT/.env"
 fi
+
+# Le serveur accepte DATABASE_URL ou NEON_DATABASE_URL : la détection de la base
+# doit accepter les deux, sinon une installation Neon valide était signalée comme
+# « aucun PostgreSQL disponible ».
+DATABASE_URL="${DATABASE_URL:-${NEON_DATABASE_URL:-}}"
+export DATABASE_URL
 
 if docker info >/dev/null 2>&1; then
   ok "Docker : démarré (PostgreSQL sera géré par Docker)"
@@ -139,8 +146,9 @@ titre "2. Configuration"
 
 if [ -f .env ]; then
   ok "fichier .env déjà présent (il n'est pas modifié)"
-  # shellcheck disable=SC1091
-  set -a; . ./.env; set +a
+  # shellcheck source=charger-env.sh
+  . "$ROOT/scripts/charger-env.sh"
+  charger_env "$ROOT/.env"
 else
   MOT_DE_PASSE=""
   while [ "${#MOT_DE_PASSE}" -lt 10 ]; do

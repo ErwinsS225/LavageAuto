@@ -9,27 +9,44 @@ import (
 
 // ---------------------------------------------------------------------------
 // Clients (détail, mise à jour, archivage).
+//
+// Toutes les requêtes sont filtrées par `organization_id` : un identifiant
+// d'une autre entreprise est introuvable (404), jamais modifiable.
 // ---------------------------------------------------------------------------
 
-func (a *App) handleCustomerDetail(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+const customerColumns = `id, organization_id, station_id, full_name, phone, plate, vehicle_model,
+	notes, is_active, created_at`
+
+// getOwnedCustomer charge un client en vérifiant l'entreprise et, pour un
+// compte rattaché à une station, le périmètre de station.
+func (a *App) getOwnedCustomer(r *http.Request, id string) (*Customer, error) {
+	user := currentUser(r)
 	var c Customer
 	var createdAt time.Time
 	err := a.Pool.QueryRow(r.Context(), `
-		SELECT id, organization_id, station_id, full_name, phone, plate, vehicle_model,
-		       notes, is_active, created_at
-		FROM customers WHERE id = $1`, id,
+		SELECT `+customerColumns+`
+		FROM customers WHERE id = $1 AND organization_id = $2`, id, deref(user.OrganizationID),
 	).Scan(&c.ID, &c.OrganizationID, &c.StationID, &c.FullName, &c.Phone, &c.Plate,
 		&c.VehicleModel, &c.Notes, &c.IsActive, &createdAt)
 	if err == pgx.ErrNoRows {
-		writeError(w, http.StatusNotFound, "not_found", "Client introuvable.", nil)
-		return
+		return nil, errNotFound
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
-		return
+		return nil, err
+	}
+	if forced := scopedStationID(user); forced != "" && forced != c.StationID {
+		return nil, errNotFound
 	}
 	c.CreatedAt = createdAt
+	return &c, nil
+}
+
+func (a *App) handleCustomerDetail(w http.ResponseWriter, r *http.Request) {
+	c, err := a.getOwnedCustomer(r, r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
 	_ = a.Pool.QueryRow(r.Context(), `
 		SELECT count(*), COALESCE(sum(total_xof),0), max(created_at)
 		FROM wash_orders WHERE customer_id = $1 AND status <> 'canceled'`, c.ID,
@@ -51,11 +68,11 @@ func (a *App) handleCustomerDetail(w http.ResponseWriter, r *http.Request) {
 			paid, due := 0, 0
 			if status == "completed" {
 				paid = total
-			} else {
+			} else if status != "canceled" {
 				due = total
 			}
 			history = append(history, map[string]any{
-				"id": oID, "reference": ref, "created_at": oCreatedAt.Format(time.RFC3339),
+				"id": oID, "reference": ref, "created_at": oCreatedAt.Format(timeLayout),
 				"status": status, "total_xof": total, "paid_xof": paid, "due_xof": due,
 				"vehicle_category_name": vcat, "plate": plate,
 			})
@@ -67,7 +84,7 @@ func (a *App) handleCustomerDetail(w http.ResponseWriter, r *http.Request) {
 			"id": c.ID, "organization_id": c.OrganizationID, "station_id": c.StationID,
 			"full_name": c.FullName, "phone": c.Phone, "plate": c.Plate,
 			"vehicle_model": c.VehicleModel, "notes": c.Notes, "is_active": c.IsActive,
-			"created_at": c.CreatedAt.Format(time.RFC3339),
+			"created_at": c.CreatedAt.Format(timeLayout),
 			"wash_count": c.WashCount, "total_spent_xof": c.TotalSpentXOF,
 			"last_visit_at": c.LastVisitAt,
 		},
@@ -76,7 +93,12 @@ func (a *App) handleCustomerDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleCustomerUpdate(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	c, err := a.getOwnedCustomer(r, r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	user := currentUser(r)
 	var body map[string]any
 	if err := decodeBody(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "validation_error", "Corps de requête invalide.", nil)
@@ -88,23 +110,37 @@ func (a *App) handleCustomerUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	for field, column := range allowed {
 		if v, ok := body[field]; ok {
-			_, _ = a.Pool.Exec(r.Context(), `UPDATE customers SET `+column+` = $1 WHERE id = $2`, v, id)
+			_, _ = a.Pool.Exec(r.Context(),
+				`UPDATE customers SET `+column+` = $1 WHERE id = $2 AND organization_id = $3`,
+				v, c.ID, c.OrganizationID)
 		}
 	}
-	var fullName, phone, plate, vehicleModel, notes string
-	var isActive bool
-	_ = a.Pool.QueryRow(r.Context(), `
-		SELECT full_name, phone, plate, vehicle_model, notes, is_active
-		FROM customers WHERE id = $1`, id,
-	).Scan(&fullName, &phone, &plate, &vehicleModel, &notes, &isActive)
+	a.addAudit(r.Context(), c.OrganizationID, c.StationID, user.FullName,
+		"customer.updated", "customer", c.ID, nil)
+
+	updated, err := a.getOwnedCustomer(r, c.ID)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id": id, "full_name": fullName, "phone": phone, "plate": plate,
-		"vehicle_model": vehicleModel, "notes": notes, "is_active": isActive,
+		"id": updated.ID, "full_name": updated.FullName, "phone": updated.Phone,
+		"plate": updated.Plate, "vehicle_model": updated.VehicleModel,
+		"notes": updated.Notes, "is_active": updated.IsActive,
 	})
 }
 
 func (a *App) handleCustomerArchive(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	_, _ = a.Pool.Exec(r.Context(), `UPDATE customers SET is_active = false WHERE id = $1`, id)
+	c, err := a.getOwnedCustomer(r, r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	user := currentUser(r)
+	_, _ = a.Pool.Exec(r.Context(),
+		`UPDATE customers SET is_active = false WHERE id = $1 AND organization_id = $2`,
+		c.ID, c.OrganizationID)
+	a.addAudit(r.Context(), c.OrganizationID, c.StationID, user.FullName,
+		"customer.archived", "customer", c.ID, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"message": "Client archivé."})
 }

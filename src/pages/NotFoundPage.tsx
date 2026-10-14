@@ -8,7 +8,15 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 export default function NotFoundPage() {
   usePageTitle('Page introuvable')
   const { me } = useAuth()
-  const home = me ? (me.user.role === 'washer' ? '/espace-laveur' : me.user.role === 'superadmin' ? '/admin' : '/tableau-de-bord') : '/'
+  // La page de secours doit renvoyer vers une adresse qui existe : l'espace de
+  // la plateforme est /administration (et non /admin).
+  const home = me
+    ? me.user.role === 'washer'
+      ? '/espace-laveur'
+      : me.user.role === 'superadmin'
+        ? '/administration'
+        : '/tableau-de-bord'
+    : '/'
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-surface-muted px-4 text-center">

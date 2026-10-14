@@ -7,9 +7,9 @@
  *   configuré ; le pont ClerkSessionBridge ouvre ensuite la session applicative.
  */
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Eye, EyeOff } from 'lucide-react'
-import { useClerk } from '@clerk/clerk-react'
 
 /** Logos sociaux en SVG inline (lucide ne fournit pas Google/Facebook). */
 function GoogleIcon() {
@@ -35,14 +35,16 @@ import { useAuth } from '@/hooks/useAuth'
 import { ApiError } from '@/lib/api'
 import { useToast } from '@/components/Toaster'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { clerkEnabled } from '@/lib/clerk'
+import { clerkEnabled, useClerkSafe } from '@/lib/clerk'
 
 export default function LoginForm() {
   usePageTitle('Connexion')
   const { login } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
-  const clerk = useClerk()
+  // Sans Clerk configuré, useClerkSafe() renvoie null : la page s'affiche et
+  // les boutons sociaux expliquent la situation au lieu de planter.
+  const clerk = useClerkSafe()
   const [socialLoading, setSocialLoading] = useState<'google' | 'facebook' | null>(null)
 
   const [email, setEmail] = useState('')
@@ -52,6 +54,11 @@ export default function LoginForm() {
   const [error, setError] = useState('')
   const [fields, setFields] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  // Retour depuis une session refusée par le serveur : on le dit, sinon
+  // l'utilisateur croit à une déconnexion qu'il n'a pas demandée.
+  const emplacement = useLocation()
+  const sessionTerminee =
+    (emplacement.state as { session?: string } | null)?.session === 'expiree'
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -61,12 +68,18 @@ export default function LoginForm() {
     try {
       const me = await login({ email, password })
       toast.success(`Bienvenue ${me.user.full_name.split(' ')[0]} !`)
+      // Une entreprise en cours de configuration reprend sa mise en route ;
+      // les autres profils retrouvent leur écran habituel.
+      const enConfiguration =
+        me.onboarding?.state === 'pending' || me.onboarding?.state === 'in_progress'
       const target =
         me.user.role === 'superadmin'
           ? '/administration'
           : me.user.role === 'washer'
             ? '/espace-laveur'
-            : '/tableau-de-bord'
+            : enConfiguration
+              ? '/onboarding'
+              : '/tableau-de-bord'
       navigate(target, { replace: true })
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -86,13 +99,20 @@ export default function LoginForm() {
    * Sans Clerk configuré, on l'explique franchement plutôt que de simuler.
    */
   async function signInSocial(strategy: 'oauth_google' | 'oauth_facebook') {
-    if (!clerkEnabled) {
+    if (!clerkEnabled || !clerk?.client?.signIn) {
       toast.info('La connexion sociale sera disponible prochainement.')
       return
     }
     setSocialLoading(strategy === 'oauth_google' ? 'google' : 'facebook')
     try {
-      await clerk.client.signIn.authenticateWithRedirect({
+      const signIn = clerk.client.signIn as {
+        authenticateWithRedirect: (options: {
+          strategy: string
+          redirectUrl: string
+          redirectUrlComplete: string
+        }) => Promise<unknown>
+      }
+      await signIn.authenticateWithRedirect({
         strategy,
         redirectUrl: '/connexion',
         redirectUrlComplete: '/tableau-de-bord',
@@ -106,37 +126,43 @@ export default function LoginForm() {
   return (
     <div className="mx-auto flex w-full max-w-sm flex-col justify-center md:mx-0">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Bon retour parmi nous</h1>
+        <h1 className="text-xl font-bold tracking-tight text-ink">Bon retour parmi nous</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
           Connectez-vous pour gérer votre station de lavage.
         </p>
       </div>
 
       <div className="mb-4 flex flex-col gap-2.5">
-        <button
+        <motion.button
           type="button"
+          whileHover={socialLoading !== null ? undefined : { y: -1 }}
+          whileTap={socialLoading !== null ? undefined : { scale: 0.98 }}
+          transition={{ duration: 0.14, ease: [0.4, 0, 0.2, 1] }}
           disabled={socialLoading !== null}
           onClick={() => void signInSocial('oauth_google')}
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#e5e7eb] bg-white text-sm text-[#111827] transition hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#47253F]/40"
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-field border border-line bg-surface text-sm text-ink shadow-e1 transition-colors duration-200 ease-soft hover:border-line-strong hover:bg-surface-muted hover:shadow-e2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <GoogleIcon />
           {socialLoading === 'google' ? 'Redirection…' : 'Continuer avec Google'}
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           type="button"
+          whileHover={socialLoading !== null ? undefined : { y: -1 }}
+          whileTap={socialLoading !== null ? undefined : { scale: 0.98 }}
+          transition={{ duration: 0.14, ease: [0.4, 0, 0.2, 1] }}
           disabled={socialLoading !== null}
           onClick={() => void signInSocial('oauth_facebook')}
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#e5e7eb] bg-white text-sm text-[#111827] transition hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#47253F]/40"
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-field border border-line bg-surface text-sm text-ink shadow-e1 transition-colors duration-200 ease-soft hover:border-line-strong hover:bg-surface-muted hover:shadow-e2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <FacebookIcon />
           {socialLoading === 'facebook' ? 'Redirection…' : 'Continuer avec Facebook'}
-        </button>
+        </motion.button>
       </div>
 
-      <div className="relative mb-4 flex items-center">
-        <div className="flex-1 border-t border-line" />
-        <span className="px-3 text-xs text-ink-muted">OU</span>
-        <div className="flex-1 border-t border-line" />
+      <div className="relative mb-4 flex items-center gap-3">
+        <div className="divider-soft h-px flex-1" />
+        <span className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-ink-subtle">ou</span>
+        <div className="divider-soft h-px flex-1" />
       </div>
 
       <form className="space-y-3.5" onSubmit={onSubmit} noValidate>
@@ -151,7 +177,7 @@ export default function LoginForm() {
               onChange={(event) => setEmail(event.target.value)}
               placeholder="nom@exemple.com"
               invalid={Boolean(fields.email)}
-              className="h-10 rounded-lg focus:outline-[#47253F]/50"
+              className="h-10"
             />
           )}
         </Field>
@@ -167,7 +193,7 @@ export default function LoginForm() {
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="••••••••"
                 invalid={Boolean(fields.password)}
-                className="h-10 rounded-lg pr-10 focus:outline-[#47253F]/50"
+                className="h-10 pr-10"
               />
               <button
                 type="button"
@@ -187,23 +213,46 @@ export default function LoginForm() {
               type="checkbox"
               checked={remember}
               onChange={(event) => setRemember(event.target.checked)}
-              className="h-3.5 w-3.5 rounded border-line accent-[#47253F]"
+              className="h-3.5 w-3.5 rounded border-line accent-[var(--brand)]"
             />
             Se souvenir de moi
           </label>
-          <Link to="/mot-de-passe-oublie" className="font-medium text-[#47253F] hover:underline">
+          <Link to="/mot-de-passe-oublie" className="link-soft font-medium">
             Mot de passe oublié ?
           </Link>
         </div>
 
-        {error ? (
-          <p className="rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
-        ) : null}
+        <AnimatePresence>
+          {sessionTerminee && !error ? (
+            <motion.p
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="rounded-field border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning"
+            >
+              Votre session a expiré. Reconnectez-vous pour retrouver votre station.
+            </motion.p>
+          ) : null}
+          {error ? (
+            <motion.p
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="rounded-field border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger"
+            >
+              {error}
+            </motion.p>
+          ) : null}
+        </AnimatePresence>
 
         <Button
           type="submit"
           variant="primary"
-          className="mt-1 h-10 w-full rounded-lg bg-[#47253F]! text-white! hover:bg-[#3a1f35]! focus-visible:outline-[#47253F]/40"
+          size="lg"
+          block
+          className="mt-1"
           loading={loading}
         >
           Se connecter
@@ -212,7 +261,7 @@ export default function LoginForm() {
 
       <p className="mt-4 text-center text-sm text-ink-muted md:text-left">
         Vous n’avez pas encore de compte ?{' '}
-        <Link to="/inscription" className="font-medium text-[#47253F] hover:underline">
+        <Link to="/inscription" className="link-soft font-medium">
           S’inscrire
         </Link>
       </p>

@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { Ban, Lock, LockOpen, Wallet } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Spinner, StatCard, Textarea } from '@/components/ui'
+import { Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorState, Field, Input, Modal, PageHeader, SkeletonRows, Spinner, StatCard, Textarea } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -14,7 +14,17 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useStation } from '@/hooks/useStation'
 import { formatDateTime, formatXOF } from '@/lib/format'
 import { parseAmountInput } from '@/lib/format'
+import { methodLabel } from '@/lib/constants'
 import type { CashMovement, CashSession, PaymentRow } from '@/types'
+
+/**
+ * Nom du moyen tel que la station l'a déclaré (« Orange Money », « Wave »…).
+ * Les encaissements antérieurs au référentiel n'ont que la famille : on la
+ * nomme alors, plutôt que d'afficher la valeur technique.
+ */
+function nomMoyen(payment: PaymentRow): string {
+  return payment.payment_method_name || methodLabel(payment.method)
+}
 
 export default function CashPage() {
   const toast = useToast()
@@ -29,7 +39,16 @@ export default function CashPage() {
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
   }
 
-  const currentQuery = useQuery<{ open: CashSession | null; last: CashSession | null; movements: CashMovement[] }>({
+  // L'API renvoie la session sous `session` (et `last_session` pour la
+  // précédente) ; `open` et `is_open` disent seulement s'il y en a une. Lire
+  // `open` comme la session ferait croire l'écran à une caisse fermée.
+  const currentQuery = useQuery<{
+    open: boolean
+    is_open: boolean
+    session: CashSession | null
+    last_session: CashSession | null
+    movements: CashMovement[]
+  }>({
     queryKey: ['cash-current', stationId],
     queryFn: () => api.get(`/cash/current${stationId ? `?station_id=${stationId}` : ''}`),
   })
@@ -70,8 +89,8 @@ export default function CashPage() {
     },
   })
 
-  const session = currentQuery.data?.open ?? null
-  const last = currentQuery.data?.last ?? null
+  const session = currentQuery.data?.session ?? null
+  const last = currentQuery.data?.last_session ?? null
   const movements = currentQuery.data?.movements ?? []
   const payments = paymentsQuery.data?.items ?? []
 
@@ -150,7 +169,7 @@ export default function CashPage() {
       />
 
       {currentQuery.isLoading ? (
-        <Spinner label="Chargement de la caisse…" />
+        <SkeletonRows rows={6} />
       ) : currentQuery.isError ? (
         <ErrorState message="Impossible de charger la caisse." onRetry={() => void currentQuery.refetch()} />
       ) : session ? (
@@ -208,7 +227,7 @@ export default function CashPage() {
                     <td className="whitespace-nowrap text-ink-muted">{formatDateTime(payment.paid_at)}</td>
                     <td className="font-medium">{payment.wash_order_reference || '—'}</td>
                     <td className="text-ink-muted">{payment.customer_name || 'Client de passage'}</td>
-                    <td className="text-ink-muted">{payment.method}</td>
+                    <td className="text-ink-muted">{nomMoyen(payment)}</td>
                     <td className="tabular text-right font-medium">{formatXOF(payment.amount_xof)}</td>
                     <td className="text-ink-muted">{payment.received_by_name}</td>
                     <td>

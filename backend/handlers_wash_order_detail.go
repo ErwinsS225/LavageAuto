@@ -8,47 +8,68 @@ import (
 
 // ---------------------------------------------------------------------------
 // Fiches de lavage (détail).
+//
+// La fiche est lue avec son entreprise : une fiche d'une autre entreprise est
+// introuvable. Les montants encaissés viennent des paiements valides.
 // ---------------------------------------------------------------------------
 
 func (a *App) handleWashOrderDetail(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
 	id := r.PathValue("id")
+
 	row := a.Pool.QueryRow(r.Context(), `
-		SELECT `+washOrderColumns+` FROM wash_orders WHERE id = $1`, id)
+		SELECT `+washOrderColumns+` FROM wash_orders
+		WHERE id = $1 AND organization_id = $2`, id, deref(user.OrganizationID))
 	o, err := scanWashOrder(row)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found", "Fiche de lavage introuvable.", nil)
 		return
 	}
+	if forced := scopedStationID(user); forced != "" && forced != o.StationID {
+		writeError(w, http.StatusNotFound, "not_found", "Fiche de lavage introuvable.", nil)
+		return
+	}
 
-	// Paiements rattachés.
+	// Paiements rattachés. Le moyen **déclaré** par la station est remonté avec
+	// l'encaissement : la fiche montre « Orange Money », pas seulement la
+	// famille comptable.
 	prows, _ := a.Pool.Query(r.Context(), `
-		SELECT id, method, amount_xof, reference, note, paid_at, received_by_name, status, void_reason
-		FROM payments WHERE wash_order_id = $1 ORDER BY paid_at`, id)
+		SELECT id, method, amount_xof, reference, note, paid_at, received_by_name, status, void_reason,
+		       payment_method_id, payment_method_name
+		FROM payments WHERE wash_order_id = $1 AND organization_id = $2
+		ORDER BY paid_at`, id, deref(user.OrganizationID))
 	payments := []map[string]any{}
 	methods := []string{}
+	paid := 0
 	if prows != nil {
 		defer prows.Close()
 		for prows.Next() {
 			var pID, method, reference, note, receivedBy, status string
 			var amount int
 			var paidAt time.Time
-			var voidReason *string
-			if err := prows.Scan(&pID, &method, &amount, &reference, &note, &paidAt, &receivedBy, &status, &voidReason); err != nil {
+			var voidReason, methodID, methodName *string
+			if err := prows.Scan(&pID, &method, &amount, &reference, &note, &paidAt, &receivedBy,
+				&status, &voidReason, &methodID, &methodName); err != nil {
 				continue
 			}
 			payments = append(payments, map[string]any{
 				"id": pID, "method": method, "amount_xof": amount,
 				"reference": reference, "note": note,
-				"paid_at": paidAt.Format(time.RFC3339),
+				"paid_at":          paidAt.Format(timeLayout),
 				"received_by_name": receivedBy, "status": status, "void_reason": voidReason,
+				"payment_method_id": methodID, "payment_method_name": deref(methodName),
 			})
-			if status == "valid" {
+			// Un paiement différé figure au détail (c'est un engagement du
+			// client) mais ne compte pas comme somme reçue : le reste dû
+			// affiché doit rester vrai.
+			if status == "valid" && method != "differe" {
 				methods = append(methods, method)
+				paid += amount
 			}
 		}
 	}
 
-	items := a.loadItems(r, o.ID)
+	items := a.loadItems(r, o.ID, o.OrganizationID)
 	labels := []string{}
 	for _, it := range items {
 		labels = append(labels, it.ServiceName)
@@ -57,30 +78,9 @@ func (a *App) handleWashOrderDetail(w http.ResponseWriter, r *http.Request) {
 	if len(labels) > 0 {
 		servicesLabel = joinComma(labels)
 	}
-	paid, due := 0, 0
-	if o.Status == "completed" {
-		paid = o.TotalXOF
-	} else {
-		due = o.TotalXOF
-	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"order": map[string]any{
-			"id": o.ID, "organization_id": o.OrganizationID, "station_id": o.StationID,
-			"reference": o.Reference, "customer_id": o.CustomerID, "customer_name": o.CustomerName,
-			"vehicle_category_id": o.VehicleCategoryID, "vehicle_category_name": o.VehicleCategoryName,
-			"plate": o.Plate, "employee_id": o.EmployeeID, "employee_name": o.EmployeeName,
-			"status": o.Status, "subtotal_xof": o.SubtotalXOF, "discount_xof": o.DiscountXOF,
-			"discount_reason": o.DiscountReason, "total_xof": o.TotalXOF, "notes": o.Notes,
-			"incident_note": o.IncidentNote, "incident_reported_at": formatTimePtr(o.IncidentReportedAt),
-			"incident_reporter_name": o.IncidentReporterName, "cancel_reason": o.CancelReason,
-			"created_by": o.CreatedBy, "created_by_name": o.CreatedByName,
-			"created_at": o.CreatedAt.Format(time.RFC3339),
-			"started_at": formatTimePtr(o.StartedAt), "completed_at": formatTimePtr(o.CompletedAt),
-			"canceled_at": formatTimePtr(o.CanceledAt), "business_day": o.BusinessDay,
-			"items": items, "paid_xof": paid, "due_xof": due,
-			"services_label": servicesLabel, "payment_methods": methods,
-		},
+		"order":    orderToJSON(o, paid, items, servicesLabel, methods),
 		"payments": payments,
 	})
 }
@@ -90,7 +90,7 @@ func formatTimePtr(t *time.Time) any {
 	if t == nil {
 		return nil
 	}
-	return t.Format(time.RFC3339)
+	return t.Format(timeLayout)
 }
 
 func boolToInt(b bool) int {

@@ -9,7 +9,7 @@
  *   « Authorization: Bearer » en complément du cookie).
  */
 import { ClerkProvider, useSession, useClerk } from '@clerk/clerk-react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
 import { api } from '@/lib/api'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
@@ -26,9 +26,31 @@ export function clerkSessionToken(): string {
   return currentSessionToken
 }
 
+/**
+ * Instance Clerk courante, ou null quand Clerk n'est pas configuré.
+ *
+ * Les crochets de Clerk lèvent une exception hors de <ClerkProvider /> — un
+ * écran qui les appelait sans Clerk installé plantait au rendu, laissant une
+ * page noire sans explication. Ce contexte permet de lire l'instance sans
+ * jamais sortir du fournisseur : useClerkSafe() renvoie null s'il est absent.
+ */
+const ClerkInstanceContext = createContext<unknown>(null)
+
+export function useClerkSafe(): { client?: { signIn?: unknown } } | null {
+  return useContext(ClerkInstanceContext) as { client?: { signIn?: unknown } } | null
+}
+
+/** Pont : publie l'instance Clerk (appelé uniquement dans <ClerkProvider />). */
+function ClerkInstanceBridge({ children }: { children: ReactNode }) {
+  const clerk = useClerk()
+  return <ClerkInstanceContext.Provider value={clerk}>{children}</ClerkInstanceContext.Provider>
+}
+
 /** Enveloppe l'application : ClerkProvider si configuré, sinon passthrough. */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  if (!clerkEnabled) return <>{children}</>
+  if (!clerkEnabled) {
+    return <ClerkInstanceContext.Provider value={null}>{children}</ClerkInstanceContext.Provider>
+  }
   return (
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
@@ -36,7 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInFallbackRedirectUrl="/tableau-de-bord"
       signUpFallbackRedirectUrl="/tableau-de-bord"
     >
-      <ClerkSessionBridge>{children}</ClerkSessionBridge>
+      <ClerkInstanceBridge>
+        <ClerkSessionBridge>{children}</ClerkSessionBridge>
+      </ClerkInstanceBridge>
     </ClerkProvider>
   )
 }

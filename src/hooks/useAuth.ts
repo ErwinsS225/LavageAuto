@@ -8,6 +8,8 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { api, ApiError } from "@/lib/api";
+import { oublierJetonApercu } from "@/lib/session-preview";
+import { surSessionExpiree } from "@/lib/session-signal";
 import type { Role } from "@/types";
 import type { Me } from "@/types";
 
@@ -27,6 +29,19 @@ export function useAuth() {
     window.addEventListener("washguard:auth-clerk", refresh);
     return () => window.removeEventListener("washguard:auth-clerk", refresh);
   }, [queryClient]);
+
+  // Session refusée par le serveur (expirée, révoquée, cookie perdu) : la
+  // session connue est vidée, la garde de route ramène à la connexion et
+  // explique le retour. On garde les données de l'entreprise en cache : elles
+  // ne servent à rien sans session, et `queryClient.clear()` au moment de la
+  // reconnexion s'en chargeait déjà autrement.
+  useEffect(
+    () =>
+      surSessionExpiree(() => {
+        queryClient.setQueryData(["me"], null);
+      }),
+    [queryClient],
+  );
 
   const meQuery = useQuery<Me | null>({
     queryKey: ["me"],
@@ -48,6 +63,8 @@ export function useAuth() {
     onSuccess: (payload) => {
       queryClient.setQueryData(["me"], payload);
     },
+    // Le jeton d'aperçu est retenu par le client API dès la réponse reçue ; une
+    // connexion refusée l'a déjà oublié (voir src/lib/api.ts).
   });
 
   /** Inscription : organisation + station + propriétaire, session ouverte. */
@@ -64,6 +81,7 @@ export function useAuth() {
     onSuccess: () => {
       queryClient.setQueryData(["me"], null);
       queryClient.clear();
+      oublierJetonApercu();
     },
   });
 

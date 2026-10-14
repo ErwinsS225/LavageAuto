@@ -3,7 +3,12 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, query } from "@/lib/api";
-import type { CommissionMode, Employee, Role } from "@/types";
+import type {
+  CommissionMode,
+  Employee,
+  EmploymentStatus,
+  Role,
+} from "@/types";
 
 export const employeesKey = (filters?: Record<string, unknown>) =>
   ["employees", filters ?? {}] as const;
@@ -27,6 +32,8 @@ export interface EmployeeOption {
   id: string;
   full_name: string;
   role: Role;
+  /** Libellé lisible du rôle (« Caissier », « Laveur »…), fourni par le serveur. */
+  role_label: string;
 }
 
 export function useEmployeeOptions(filters: { station_id?: string } = {}) {
@@ -85,6 +92,14 @@ export interface EmployeeInput {
   phone?: string;
   role: Role;
   station_id?: string;
+  /**
+   * Description de la personne : facultative, et volontairement séparée de la
+   * rémunération, qui demande une permission dédiée côté serveur.
+   */
+  job_title?: string;
+  hired_on?: string;
+  work_schedule?: string;
+  employment_status?: EmploymentStatus;
   commission_mode?: CommissionMode;
   commission_per_wash_xof?: number;
   commission_percent?: number;
@@ -113,17 +128,13 @@ export interface EmployeeUpdateInput extends Partial<EmployeeInput> {
 }
 
 export function useUpdateEmployee() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: EmployeeUpdateInput) =>
       api.patch<Employee>("/employees/" + id, input),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ["employees"] }),
   });
 }
 
 export function useResetEmployeePassword() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       api.post<EmployeeCreated>(`/employees/${id}/reset-password`),

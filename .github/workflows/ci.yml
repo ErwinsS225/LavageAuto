@@ -1,0 +1,177 @@
+# Intégration continue — garde-fous minimaux du dépôt.
+#
+# Objet : empêcher que la compilation reparte en arrière. Le dépôt n'avait
+# aucun test ni vérification automatique ; ces deux tâches sont le strict
+# minimum (compilation du serveur, formatage, compilation du front).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Serveur Go
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    # Les tests de bout en bout ont besoin d'une vraie base : chaque test crée
+    # son propre schéma, le migre et le laisse derrière lui. Sans cette base
+    # (ni DATABASE_URL), ils sont ignorés — ce qui rendrait la tâche verte à
+    # tort, d'où le service ci-dessous.
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/washguard?sslmode=disable
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: washguard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # Le serveur doit compiler avant tout le reste.
+      - name: Compilation
+        run: go build ./...
+
+      # gofmt -l n'affiche rien sur un dépôt formaté : la liste non vide casse
+      # la tâche, ce qui évite les diffs de formatage parasites.
+      - name: Formatage
+        run: |
+          non_formates="$(gofmt -l .)"
+          if [ -n "$non_formates" ]; then
+            echo "Fichiers mal formatés (gofmt) :"
+            echo "$non_formates"
+            exit 1
+          fi
+
+      - name: Analyse statique
+        run: go vet ./...
+
+      # 65 tests : 5 sur la vérification des jetons Clerk, 60 de bout en bout
+      # (inscription, mise en route, tarification, caisse, invitations, équipe,
+      # matériel et stock, isolation entre entreprises, plafonds de formule).
+      - name: Tests
+        run: go test -count=1 ./...
+
+  frontend:
+    name: Application web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Dépendances
+        run: npm ci
+
+      # tsc -b + vite build : c'est exactement la commande de production.
+      - name: Compilation
+        run: npm run build
+
+      # Un menu qui pointe vers une adresse inexistante envoie l'utilisateur
+      # sur la page « introuvable » : ce contrôle lit App.tsx et les liens.
+      - name: Cohérence des routes et des écrans
+        run: node scripts/verifications/coherence-routes.mjs
+
+      # Une erreur au rendu laisse une page vide : on vérifie que chaque écran
+      # produit bien son contenu.
+      - name: Rendu des pages
+        run: node scripts/verifications/rendu-pages.mjs
+
+  sondes:
+    name: Sondes d'acceptation
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/washguard?sslmode=disable
+      WASHGUARD_PSQL: 'psql "$DATABASE_URL"'
+      API_PORT: '8099'
+      SEED_DEMO: 'true'
+      # Les sondes créent plusieurs entreprises : on relève les plafonds
+      # anti-abus pour qu'ils ne faussent pas les contrôles.
+      REGISTER_MAX_PER_HOUR: '200'
+      AUTH_MAX_FAILURES: '200'
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: washguard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Compilation du serveur
+        run: cd backend && go build -o /tmp/washguard-api .
+
+      # Le serveur crée le schéma et les données de démonstration au démarrage.
+      - name: Démarrage de l'API
+        run: |
+          /tmp/washguard-api &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8099/api/v1/plans >/dev/null; then
+              echo "API disponible"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "L'API n'a pas démarré" >&2
+          exit 1
+
+      # Accès et contrat d'API, puis règles métier. Les deux autres sondes ne
+      # s'exécutent que si les premières passent : sinon le diagnostic utile
+      # (le comportement de base) serait noyé.
+      - name: Sondes API et métier
+        run: |
+          python3 scripts/verifications/sonde-api.py
+          python3 scripts/verifications/sonde-metier.py
+
+      - name: Sondes fiche payée et entreprise suspendue
+        run: |
+          python3 scripts/verifications/sonde-fiche-payee.py
+          python3 scripts/verifications/sonde-suspension.py
+
+      # Le parcours de mise en route et les référentiels qu'il installe. Ces
+      # sondes créent leurs propres entreprises : elles valent aussi comme
+      # vérification du parcours d'inscription réel.
+      - name: Sondes de mise en route et de catalogue
+        run: |
+          python3 scripts/verifications/sonde-onboarding.py
+          python3 scripts/verifications/sonde-tarifs.py
+          python3 scripts/verifications/sonde-vehicules.py
+          python3 scripts/verifications/sonde-invitations.py
+          python3 scripts/verifications/sonde-lot7.py
+          python3 scripts/verifications/sonde-lot8.py

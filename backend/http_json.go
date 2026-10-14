@@ -22,6 +22,23 @@ func writeError(w http.ResponseWriter, status int, code, message string, fields 
 	writeJSON(w, status, map[string]any{"error": errObj})
 }
 
+// writeErrorDetaillee : la même erreur, avec des détails structurés.
+//
+// `fields` reste ce que le formulaire affiche champ par champ ; `details` porte
+// ce qui ne tient pas dans une chaîne — la liste des prérequis manquants d'une
+// activation, par exemple. Une erreur qui dit seulement « impossible » oblige
+// l'utilisateur à deviner ce qui manque.
+func writeErrorDetaillee(w http.ResponseWriter, status int, code, message string, fields map[string]string, details map[string]any) {
+	errObj := map[string]any{"code": code, "message": message}
+	if len(fields) > 0 {
+		errObj["fields"] = fields
+	}
+	if len(details) > 0 {
+		errObj["details"] = details
+	}
+	writeJSON(w, status, map[string]any{"error": errObj})
+}
+
 // decodeBody lit le corps JSON d'une requête dans dest.
 func decodeBody(r *http.Request, dest any) error {
 	dec := json.NewDecoder(r.Body)

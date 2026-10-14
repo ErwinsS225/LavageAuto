@@ -1,1 +1,0 @@
-function e(e,...t){return[`v1`,e,...t.map(e=>String(e))].join(`:`)}export{e as t};

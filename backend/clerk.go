@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"log"
 	"strings"
@@ -17,7 +20,34 @@ import (
 // Clerk : vérification des sessions JWT et synchronisation vers Neon.
 // ---------------------------------------------------------------------------
 
-var clerkKeyfunc keyfunc.Keyfunc
+var clerkKeyfunc jwt.Keyfunc
+
+// clerkStaticKey : clé publique RSA fournie en configuration (JWKS_PUBLIC_KEY).
+// Elle sert de repli quand aucune adresse JWKS n'est fournie ou joignable :
+// la vérification d'une session ne dépend alors pas d'un accès réseau.
+var clerkStaticKey *rsa.PublicKey
+
+// parsePublicKeyPEM lit une clé publique au format PEM (celle que Clerk
+// affiche dans son tableau de bord).
+func parsePublicKeyPEM(contenu string) (*rsa.PublicKey, error) {
+	bloc, _ := pem.Decode([]byte(strings.TrimSpace(contenu)))
+	if bloc == nil {
+		return nil, fmt.Errorf("clé publique illisible (format PEM attendu)")
+	}
+	pub, err := x509.ParsePKIXPublicKey(bloc.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("clé publique illisible : %w", err)
+	}
+	cle, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("clé publique non RSA")
+	}
+	return cle, nil
+}
+
+// authorizedPartiesClerk : origines acceptées pour le claim `azp` des sessions
+// Clerk (renseignées par initClerk).
+var authorizedPartiesClerk []string
 
 // initClerk configure le SDK Clerk (clé secrète) et charge la JWKS pour la
 // vérification locale des JWT de session. Sûr à appeler même sans Clerk.
@@ -25,42 +55,80 @@ func (a *App) initClerk() error {
 	if !a.Cfg.ClerkEnabled {
 		return nil
 	}
+	authorizedPartiesClerk = a.Cfg.ClerkAuthorizedParties
 	clerk.SetKey(a.Cfg.ClerkSecretKey)
-	if a.Cfg.ClerkJWKSURL == "" {
-		return fmt.Errorf("clerk : JWKS_URL_CLERK manquante (vérification JWT impossible)")
+
+	// Clé statique éventuelle : elle sert de repli, jamais de priorité.
+	if a.Cfg.ClerkPublicKey != "" {
+		cle, err := parsePublicKeyPEM(a.Cfg.ClerkPublicKey)
+		if err != nil {
+			log.Printf("Clerk : JWKS_PUBLIC_KEY ignorée (%v)", err)
+		} else {
+			clerkStaticKey = cle
+		}
 	}
-	kf, err := keyfunc.NewDefault([]string{a.Cfg.ClerkJWKSURL})
-	if err != nil {
-		return fmt.Errorf("clerk : chargement JWKS : %w", err)
+
+	if a.Cfg.ClerkJWKSURL != "" {
+		kf, err := keyfunc.NewDefault([]string{a.Cfg.ClerkJWKSURL})
+		if err != nil {
+			// L'adresse peut être momentanément injoignable : si une clé
+			// statique est fournie, on continue à vérifier les sessions.
+			if clerkStaticKey == nil {
+				return fmt.Errorf("clerk : chargement JWKS : %w", err)
+			}
+			log.Printf("Clerk : JWKS injoignable (%v) — repli sur la clé publique statique", err)
+			return nil
+		}
+		clerkKeyfunc = kf.Keyfunc
+		log.Printf("Clerk activé (JWKS: %s)", a.Cfg.ClerkJWKSURL)
+		return nil
 	}
-	clerkKeyfunc = kf
-	log.Printf("Clerk activé (JWKS: %s)", a.Cfg.ClerkJWKSURL)
-	return nil
+	if clerkStaticKey != nil {
+		log.Printf("Clerk activé (clé publique statique, sans rotation automatique)")
+		return nil
+	}
+	return fmt.Errorf("clerk : JWKS_URL_CLERK ou JWKS_PUBLIC_KEY requise (vérification des jetons impossible)")
 }
 
 // verifyClerkSessionToken valide un JWT de session Clerk et renvoie son subject
 // (= clerk_user_id) et l'e-mail principal quand disponible.
 func verifyClerkSessionToken(tokenStr string) (clerkUserID, email string, err error) {
-	if clerkKeyfunc == nil {
+	if clerkKeyfunc == nil && clerkStaticKey == nil {
 		return "", "", fmt.Errorf("clerk non initialisé")
 	}
 	opts := []jwt.ParserOption{jwt.WithValidMethods([]string{"RS256"})}
-	claims := jwt.MapClaims{}
-	parser := jwt.NewParser(opts...)
-	if _, _, err = parser.ParseUnverified(tokenStr, claims); err == nil {
-		if azp, ok := claims["azp"].(string); ok && azp != "" && clerkAuthorizedParties != "" {
-			if !containsPartie(strings.Split(clerkAuthorizedParties, ","), azp) {
-				return "", "", fmt.Errorf("azp non autorisé")
+	// Ordre de résolution : l'adresse JWKS (qui suit la rotation des clés de
+	// Clerk) puis, si elle ne répond pas, la clé publique statique. Une station
+	// dont le réseau vacille peut ainsi continuer à valider les sessions.
+	cle := jwt.Keyfunc(func(t *jwt.Token) (any, error) {
+		if clerkKeyfunc != nil {
+			if k, err := clerkKeyfunc(t); err == nil {
+				return k, nil
 			}
 		}
-	}
-	tok, err := jwt.Parse(tokenStr, clerkKeyfunc.Keyfunc, opts...)
+		if clerkStaticKey != nil {
+			return clerkStaticKey, nil
+		}
+		return nil, fmt.Errorf("aucune clé de vérification disponible")
+	})
+	tok, err := jwt.Parse(tokenStr, cle, opts...)
 	if err != nil || !tok.Valid {
 		return "", "", fmt.Errorf("jeton Clerk invalide : %w", err)
 	}
 	mc, ok := tok.Claims.(jwt.MapClaims)
 	if !ok {
 		return "", "", fmt.Errorf("claims Clerk illisibles")
+	}
+	// `azp` = application à l'origine de la session. Le contrôle est fait
+	// **après** vérification de signature (un jeton non signé ne doit pas
+	// pouvoir décider de ses propres claims).
+	if azp, ok := mc["azp"].(string); ok && azp != "" {
+		if len(authorizedPartiesClerk) == 0 {
+			return "", "", fmt.Errorf("azp présent mais aucune origine autorisée configurée")
+		}
+		if !containsPartie(authorizedPartiesClerk, azp) {
+			return "", "", fmt.Errorf("azp non autorisé")
+		}
 	}
 	sub, _ := mc["sub"].(string)
 	if sub == "" {
@@ -74,8 +142,6 @@ func verifyClerkSessionToken(tokenStr string) (clerkUserID, email string, err er
 	}
 	return sub, email, nil
 }
-
-var clerkAuthorizedParties string
 
 func containsPartie(list []string, v string) bool {
 	for _, s := range list {

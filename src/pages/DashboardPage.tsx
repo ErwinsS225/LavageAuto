@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import {
   AlertTriangle,
   Banknote,
+  BarChart3,
   Car,
   History,
   Info,
@@ -19,19 +21,28 @@ import {
   Wallet,
 } from 'lucide-react'
 import {
-  Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Label,
   Legend,
-  Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
+
+import {
+  axisXProps,
+  ChartGradients,
+  axisYProps,
+  ChartBar,
+  ChartDonut,
+  ChartLegend,
+  ChartTooltip,
+  DonutCell,
+  gridProps,
+} from '@/components/charts'
 
 import {
   Button,
@@ -41,9 +52,12 @@ import {
   EmptyState,
   ErrorState,
   Progress,
+  ScreenHero,
+  Segmented,
   Spinner,
   StatCard,
 } from '@/components/ui'
+import { SetupPanel } from '@/features/onboarding/SetupPanel'
 import { useDashboard } from '@/features/reports/api'
 import { useWashOrders } from '@/features/wash-orders/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -59,8 +73,6 @@ import {
   today,
 } from '@/lib/format'
 import type { DashboardData, Me } from '@/types'
-
-const CHART_COLORS = ['#0284c7', '#0ea5e9', '#38bdf8', '#7dd3fc', '#0f9d58', '#f59e0b', '#f87171']
 
 /**
  * Tableau de bord adapté au profil connecté :
@@ -130,36 +142,44 @@ function CashierDashboardView({ data, stationId, me }: { data: DashboardData; st
   return (
     <div className="space-y-5">
       {/* En-tête Caissier */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-gradient-to-r from-surface via-surface to-surface-muted p-4 sm:p-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-ink sm:text-2xl">Guichet & Caisse</h1>
-            <span className="badge badge-brand">🏷️ Poste Caissier</span>
-          </div>
-          <p className="mt-1 text-sm text-ink-muted">
+      <ScreenHero
+        icon={<Wallet size={22} />}
+        title="Guichet & Caisse"
+        badge={<span className="badge badge-brand">Poste caissier</span>}
+        subtitle={
+          <>
             Bonjour <span className="font-semibold text-ink">{me?.user.full_name}</span> · {me?.station?.name} ·{' '}
             {new Date(data.date).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' })}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link to="/lavages">
-            <Button variant="primary" icon={<Car size={16} />}>
-              Nouveau lavage
-            </Button>
-          </Link>
-          <Link to="/clients">
-            <Button variant="ghost" icon={<UserPlus size={16} />}>
-              Nouveau client
-            </Button>
-          </Link>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <Link to="/lavages">
+              <Button variant="primary" icon={<Car size={16} />}>
+                Nouveau lavage
+              </Button>
+            </Link>
+            <Link to="/clients">
+              <Button variant="ghost" icon={<UserPlus size={16} />}>
+                Nouveau client
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {/* Alerte et état de la caisse du jour */}
       {!cash || !isCashOpen ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning/40 bg-warning-soft p-4 text-warning">
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-warning/35 bg-warning-soft p-4 text-warning shadow-e2"
+        >
           <div className="flex items-start gap-3">
-            <AlertTriangle size={24} className="mt-0.5 shrink-0" />
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-card border border-warning/35 bg-surface/60">
+              <AlertTriangle size={18} />
+            </span>
             <div>
               <p className="font-semibold text-ink">Votre caisse n'est pas encore ouverte ce matin</p>
               <p className="text-xs text-ink-muted">
@@ -172,7 +192,7 @@ function CashierDashboardView({ data, stationId, me }: { data: DashboardData; st
               Ouvrir ma caisse (fond initial)
             </Button>
           </Link>
-        </div>
+        </motion.div>
       ) : (
         <Card className="border-success/30 bg-success-soft/20">
           <div className="p-4 sm:p-5">
@@ -196,17 +216,17 @@ function CashierDashboardView({ data, stationId, me }: { data: DashboardData; st
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-line bg-surface p-3">
+              <div className="card p-3">
                 <p className="text-xs text-ink-muted">Fond initial</p>
                 <p className="mt-1 text-lg font-bold tabular text-ink">{formatXOF(cash.opening_float_xof)}</p>
                 <p className="text-[10px] text-ink-muted">à l'ouverture</p>
               </div>
-              <div className="rounded-xl border border-line bg-surface p-3">
+              <div className="card p-3">
                 <p className="text-xs text-ink-muted">Espèces perçues</p>
                 <p className="mt-1 text-lg font-bold tabular text-success">+{formatXOF(cash.cash_in_xof)}</p>
                 <p className="text-[10px] text-ink-muted">en caisse physique</p>
               </div>
-              <div className="rounded-xl border border-line bg-surface p-3">
+              <div className="card p-3">
                 <p className="text-xs text-ink-muted">Mobile Money</p>
                 <p className="mt-1 text-lg font-bold tabular text-brand">{formatXOF(cash.mobile_money_xof)}</p>
                 <p className="text-[10px] text-ink-muted">Wave / Orange / MTN</p>
@@ -222,51 +242,83 @@ function CashierDashboardView({ data, stationId, me }: { data: DashboardData; st
       )}
 
       {/* Raccourcis d'action au guichet */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Link
-          to="/lavages"
-          className="group flex flex-col items-center justify-center rounded-2xl border border-line bg-surface p-4 text-center transition hover:border-brand hover:shadow-sm"
+      <motion.div
+        variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.06 } } }}
+        initial="hidden"
+        animate="visible"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 10 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } },
+          }}
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand text-brand-ink transition group-hover:scale-105">
+          <Link
+            to="/lavages"
+            className="card card-interactive group flex h-full flex-col items-center justify-center p-4 text-center no-underline"
+          >
+          <div className="btn-brand flex h-11 w-11 items-center justify-center rounded-card transition group-hover:scale-105 shadow-e2">
             <Car size={22} />
           </div>
           <span className="mt-2.5 font-semibold text-sm text-ink">Nouveau lavage</span>
           <span className="text-[11px] text-ink-muted">Saisie rapide & prestations</span>
-        </Link>
+          </Link>
+        </motion.div>
 
-        <Link
-          to="/clients"
-          className="group flex flex-col items-center justify-center rounded-2xl border border-line bg-surface p-4 text-center transition hover:border-brand hover:shadow-sm"
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 10 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } },
+          }}
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-muted text-ink transition group-hover:scale-105">
+          <Link
+            to="/clients"
+            className="card card-interactive group flex h-full flex-col items-center justify-center p-4 text-center no-underline"
+          >
+          <div className="flex h-11 w-11 items-center justify-center rounded-card border border-line bg-surface-muted text-ink shadow-e1 transition group-hover:scale-105">
             <UserPlus size={22} />
           </div>
           <span className="mt-2.5 font-semibold text-sm text-ink">Client & véhicule</span>
           <span className="text-[11px] text-ink-muted">Enregistrer ou rechercher</span>
-        </Link>
+          </Link>
+        </motion.div>
 
-        <Link
-          to="/caisse"
-          className="group flex flex-col items-center justify-center rounded-2xl border border-line bg-surface p-4 text-center transition hover:border-brand hover:shadow-sm"
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 10 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } },
+          }}
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-muted text-ink transition group-hover:scale-105">
+          <Link
+            to="/caisse"
+            className="card card-interactive group flex h-full flex-col items-center justify-center p-4 text-center no-underline"
+          >
+          <div className="flex h-11 w-11 items-center justify-center rounded-card border border-line bg-surface-muted text-ink shadow-e1 transition group-hover:scale-105">
             <Wallet size={22} />
           </div>
           <span className="mt-2.5 font-semibold text-sm text-ink">Mouvements de caisse</span>
           <span className="text-[11px] text-ink-muted">Dépenses & comptage</span>
-        </Link>
+          </Link>
+        </motion.div>
 
-        <Link
-          to="/prestations"
-          className="group flex flex-col items-center justify-center rounded-2xl border border-line bg-surface p-4 text-center transition hover:border-brand hover:shadow-sm"
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 10 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } },
+          }}
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-muted text-ink transition group-hover:scale-105">
+          <Link
+            to="/prestations"
+            className="card card-interactive group flex h-full flex-col items-center justify-center p-4 text-center no-underline"
+          >
+          <div className="flex h-11 w-11 items-center justify-center rounded-card border border-line bg-surface-muted text-ink shadow-e1 transition group-hover:scale-105">
             <Sparkles size={22} />
           </div>
           <span className="mt-2.5 font-semibold text-sm text-ink">Tarifs du catalogue</span>
           <span className="text-[11px] text-ink-muted">Consulter les prix officiels</span>
-        </Link>
-      </div>
+          </Link>
+        </motion.div>
+      </motion.div>
 
       {/* File d'attente atelier en temps réel (pour renseigner les clients au comptoir) */}
       <Card>
@@ -274,36 +326,17 @@ function CashierDashboardView({ data, stationId, me }: { data: DashboardData; st
           title="File d'attente atelier en direct"
           subtitle="Suivez l'avancement des véhicules pour renseigner instantanément les clients"
           actions={
-            <div className="flex rounded-lg border border-line bg-surface-muted p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setQueueTab('all')}
-                className={`rounded px-2.5 py-1 font-medium transition ${queueTab === 'all' ? 'bg-surface text-ink shadow-xs' : 'text-ink-muted'}`}
-              >
-                Tous ({orders.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setQueueTab('pending')}
-                className={`rounded px-2.5 py-1 font-medium transition ${queueTab === 'pending' ? 'bg-surface text-ink shadow-xs' : 'text-ink-muted'}`}
-              >
-                En attente ({pendingOrders.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setQueueTab('in_progress')}
-                className={`rounded px-2.5 py-1 font-medium transition ${queueTab === 'in_progress' ? 'bg-surface text-ink shadow-xs' : 'text-ink-muted'}`}
-              >
-                En cours ({inProgressOrders.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setQueueTab('completed')}
-                className={`rounded px-2.5 py-1 font-medium transition ${queueTab === 'completed' ? 'bg-surface text-ink shadow-xs' : 'text-ink-muted'}`}
-              >
-                Prêts ({completedOrders.length})
-              </button>
-            </div>
+            <Segmented
+              layoutId="file-atelier"
+              value={queueTab}
+              onChange={setQueueTab}
+              options={[
+                { value: 'all', label: 'Tous', count: orders.length },
+                { value: 'pending', label: 'En attente', count: pendingOrders.length },
+                { value: 'in_progress', label: 'En cours', count: inProgressOrders.length },
+                { value: 'completed', label: 'Prêts', count: completedOrders.length },
+              ]}
+            />
           }
         />
 
@@ -393,7 +426,7 @@ function CashierDashboardView({ data, stationId, me }: { data: DashboardData; st
       </Card>
 
       {/* Rappel des responsabilités et sécurité caisse */}
-      <div className="flex items-start gap-3 rounded-xl border border-line bg-surface-muted/50 p-4 text-xs text-ink-muted">
+      <div className="flex items-start gap-3 panel p-4 text-xs text-ink-muted">
         <ShieldCheck size={18} className="mt-0.5 shrink-0 text-brand" />
         <div className="space-y-0.5 leading-relaxed">
           <p className="font-semibold text-ink">Sécurité opérationnelle & règles du poste caissier</p>
@@ -423,10 +456,18 @@ function ManagerDashboardView({
   me: Me | null
   can: (permission: string) => boolean
 }) {
-  const todayData = data.today
+  // Les montants du jour arrivent **ou non** : le serveur ne les envoie pas
+  // quand la station n'a aucune fiche, ni quand le profil n'a pas accès aux
+  // paiements. L'écran s'adapte au lieu d'afficher une colonne de zéros.
+  const todayData = data.today ?? null
   const cash = data.cash
+  const cashLisible = Object.prototype.hasOwnProperty.call(data, 'cash')
   const alerts = data.alerts ?? []
   const goal = data.goal ?? null
+  const setup = data.setup
+  // Avant la première fiche (ou avant l'activation), l'écran d'arrivée raconte
+  // la station : ce qu'elle est, ce qu'elle accepte, ce qui reste à régler.
+  const enMiseEnRoute = Boolean(setup) && (!setup!.activation.active || data.no_activity === true)
 
   const series = useMemo(
     () =>
@@ -445,59 +486,80 @@ function ManagerDashboardView({
   return (
     <div className="space-y-5">
       {/* En-tête de gestion */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-ink sm:text-2xl">Tableau de bord de gestion</h1>
-            <span className="badge badge-brand">
-              {isOwner ? '🏢 Propriétaire' : '👔 Gérant opérationnel'}
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-ink-muted">
+      <ScreenHero
+        icon={<TrendingUp size={22} />}
+        title="Tableau de bord de gestion"
+        badge={<span className="badge badge-brand">{isOwner ? 'Propriétaire' : 'Gérant opérationnel'}</span>}
+        subtitle={
+          <>
             Activité supervisée du{' '}
-            {new Date(data.date).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/lavages">
-            <Button variant="primary" icon={<Car size={16} />}>
-              Enregistrer un lavage
-            </Button>
-          </Link>
-          <Link to="/caisse">
-            <Button icon={<Wallet size={16} />}>Caisse</Button>
-          </Link>
-          {can('settings:view') && (
-            <Link to="/parametres">
-              <Button variant="ghost" icon={<History size={16} />}>
-                Journal d'audit
+            {new Date(data.date).toLocaleDateString('fr-FR', {
+              weekday: 'long',
+              day: '2-digit',
+              month: 'long',
+              year: 'numeric',
+            })}
+            .
+          </>
+        }
+        tone="neutral"
+        actions={
+          <>
+            <Link to="/rapports">
+              <Button variant="secondary" size="sm" icon={<BarChart3 size={15} />}>
+                Rapports
               </Button>
             </Link>
-          )}
-        </div>
-      </div>
-
+            {can('settings:view') ? (
+              <Link to="/parametres">
+                <Button variant="ghost" size="sm" icon={<History size={15} />}>
+                  Journal d'audit
+                </Button>
+              </Link>
+            ) : null}
+          </>
+        }
+      />
       {alerts.length > 0 ? (
         <div className="space-y-2">
-          {alerts.map((alert) => (
-            <div
-              key={alert.message}
-              className={
-                alert.level === 'danger'
-                  ? 'flex items-start gap-2 rounded-xl border border-danger/40 bg-danger-soft px-3.5 py-2.5 text-sm text-danger'
-                  : alert.level === 'warning'
-                    ? 'flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft px-3.5 py-2.5 text-sm text-warning'
-                    : 'flex items-start gap-2 rounded-xl border border-brand/40 bg-brand-soft px-3.5 py-2.5 text-sm text-brand'
-              }
-            >
-              {alert.level === 'info' ? <Info size={16} className="mt-0.5 shrink-0" /> : <AlertTriangle size={16} className="mt-0.5 shrink-0" />}
-              <span>{alert.message}</span>
-            </div>
-          ))}
+          {alerts.map((alert, index) => {
+            const ton =
+              alert.level === 'danger'
+                ? 'border-danger/30 bg-danger-soft text-danger'
+                : alert.level === 'warning'
+                  ? 'border-warning/30 bg-warning-soft text-warning'
+                  : 'border-brand/30 bg-brand-soft text-brand'
+            return (
+              <motion.div
+                key={alert.message}
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: Math.min(index * 0.05, 0.2) }}
+                className={`flex items-start gap-2.5 rounded-field border px-3.5 py-2.5 text-sm shadow-e1 ${ton}`}
+              >
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current/30 bg-surface/40">
+                  {alert.level === 'info' ? <Info size={12} /> : <AlertTriangle size={12} />}
+                </span>
+                <span className="leading-relaxed">{alert.message}</span>
+              </motion.div>
+            )
+          })}
         </div>
       ) : null}
 
+      {/* État de la station : identité, horaires, catalogue, prérequis.
+          C'est le même bloc `setup` que le récapitulatif de mise en route —
+          un seul calcul serveur, donc deux écrans cohérents. */}
+      {setup && enMiseEnRoute ? <SetupPanel setup={setup} /> : null}
+      {data.no_activity_note ? (
+        <p className="rounded-field border border-line bg-surface-muted/60 px-4 py-3 text-sm text-ink-muted">
+          {data.no_activity_note}
+        </p>
+      ) : null}
+      {setup && !enMiseEnRoute ? <SetupPanel setup={setup} compact /> : null}
+
       {/* Indicateurs clés financiers */}
+      {todayData ? (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Chiffre d’affaires du jour"
@@ -525,6 +587,7 @@ function ManagerDashboardView({
           tone={todayData.result_xof >= 0 ? 'success' : 'danger'}
         />
       </div>
+      ) : null}
 
       {goal ? (
         <Card>
@@ -562,6 +625,7 @@ function ManagerDashboardView({
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
+        {data.series ? (
         <Card className="lg:col-span-2">
           <CardHeader
             title="Activité des 7 derniers jours"
@@ -569,23 +633,29 @@ function ManagerDashboardView({
           />
           <div className="h-72 p-3">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
-                <XAxis dataKey="label" stroke="var(--ink-muted)" fontSize={12} tickLine={false} />
-                <YAxis stroke="var(--ink-muted)" fontSize={12} tickFormatter={(value) => formatCompact(Number(value))} tickLine={false} axisLine={false} />
+              <BarChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={4}>
+                <defs>
+                  <ChartGradients ids={['gradCa', 'gradEncaisse', 'gradDepenses']} />
+                </defs>
+                <CartesianGrid {...gridProps} />
+                <XAxis dataKey="label" {...axisXProps} />
+                <YAxis {...axisYProps} tickFormatter={(value) => formatCompact(Number(value))} />
                 <Tooltip
-                  formatter={(value) => formatXOF(Number(value))}
-                  contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 12 }}
+                  content={<ChartTooltip formatValue={(value) => formatXOF(value)} />}
+                  cursor={{ fill: 'color-mix(in oklab, var(--brand) 8%, transparent)' }}
+                  animationDuration={140}
                 />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="ca" name="Chiffre d’affaires" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="encaisse" name="Encaissements" fill={CHART_COLORS[3]} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="depenses" name="Dépenses" fill={CHART_COLORS[6]} radius={[4, 4, 0, 0]} />
+                <Legend content={<ChartLegend />} />
+                <ChartBar dataKey="ca" name="Chiffre d’affaires" gradientId="gradCa" />
+                <ChartBar dataKey="encaisse" name="Encaissements" gradientId="gradEncaisse" delay={0.1} />
+                <ChartBar dataKey="depenses" name="Dépenses" gradientId="gradDepenses" delay={0.2} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Card>
+        ) : null}
 
+        {cashLisible ? (
         <Card>
           <CardHeader title="Contrôle de Caisse" subtitle={cash?.is_open ? 'En cours de service' : 'Fermée'} />
           <div className="space-y-3 p-4">
@@ -632,15 +702,19 @@ function ManagerDashboardView({
                 </Link>
               </>
             )}
-            <div className="flex items-center justify-between rounded-lg bg-surface-muted px-3 py-2 text-xs text-ink-muted">
-              <span>Reste à encaisser aujourd'hui</span>
-              <span className="tabular font-medium text-ink">{formatXOF(todayData.due_xof)}</span>
-            </div>
+            {todayData ? (
+              <div className="flex items-center justify-between rounded-lg bg-surface-muted px-3 py-2 text-xs text-ink-muted">
+                <span>Reste à encaisser aujourd'hui</span>
+                <span className="tabular font-medium text-ink">{formatXOF(todayData.due_xof)}</span>
+              </div>
+            ) : null}
           </div>
         </Card>
+        ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
+        {data.payment_methods ? (
         <Card>
           <CardHeader title="Moyens de paiement" subtitle="Répartition du jour" />
           <div className="h-64 p-3">
@@ -649,19 +723,18 @@ function ManagerDashboardView({
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
+                  <ChartDonut
                     data={(data.payment_methods ?? []).map((item) => ({
                       name: methodLabel(item.method),
                       value: item.amount_xof,
                     }))}
                     dataKey="value"
                     nameKey="name"
-                    innerRadius={45}
-                    outerRadius={75}
-                    paddingAngle={2}
+                    innerRadius="58%"
+                    outerRadius="86%"
                   >
                     {(data.payment_methods ?? []).map((item, index) => (
-                      <Cell key={item.method} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      <DonutCell key={item.method} index={index} />
                     ))}
                     <Label
                       content={({ viewBox }) => {
@@ -675,7 +748,7 @@ function ManagerDashboardView({
                               style={{ fill: 'var(--ink)', fontSize: 17, fontWeight: 600 }}
                               className="tabular"
                             >
-                              {formatCompact(todayData.payments_xof)}
+                              {formatCompact(todayData?.payments_xof ?? 0)}
                             </tspan>
                             <tspan x={box.cx} y={box.cy + 18} style={{ fill: 'var(--ink-muted)', fontSize: 11 }}>
                               encaissé
@@ -684,18 +757,20 @@ function ManagerDashboardView({
                         )
                       }}
                     />
-                  </Pie>
+                  </ChartDonut>
                   <Tooltip
-                    formatter={(value) => formatXOF(Number(value))}
-                    contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, fontSize: 12 }}
+                    content={<ChartTooltip formatValue={(value) => formatXOF(value)} />}
+                    animationDuration={140}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Legend content={<ChartLegend />} />
                 </PieChart>
               </ResponsiveContainer>
             )}
           </div>
         </Card>
+        ) : null}
 
+        {data.top_services ? (
         <Card>
           <CardHeader title="Prestations les plus vendues" subtitle="Aujourd’hui" />
           <div className="p-4">
@@ -718,7 +793,9 @@ function ManagerDashboardView({
             )}
           </div>
         </Card>
+        ) : null}
 
+        {data.employees ? (
         <Card>
           <CardHeader
             title="Rendement de l’équipe"
@@ -752,6 +829,7 @@ function ManagerDashboardView({
             )}
           </div>
         </Card>
+        ) : null}
       </div>
 
       <DefinitionNote definitions={data.definitions} />

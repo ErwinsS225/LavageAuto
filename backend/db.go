@@ -31,12 +31,3 @@ func openDB(databaseURL string) (*pgxpool.Pool, error) {
 	}
 	return pool, nil
 }
-
-// migrate applique le schéma (idempotent : CREATE TABLE IF NOT EXISTS).
-func migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	_, err := pool.Exec(ctx, schemaSQL)
-	if err != nil {
-		return fmt.Errorf("exécution du schéma : %w", err)
-	}
-	return nil
-}

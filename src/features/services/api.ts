@@ -20,13 +20,36 @@ export function useStationServices(filters: { station_id?: string } = {}) {
 
 export interface ServiceInput {
   station_id?: string;
-  name: string;
+  /**
+   * Obligatoire à la création (le serveur refuse un nom vide) ; facultatif en
+   * mise à jour, où l'on ne transmet que ce qui change — un tarif, par exemple.
+   */
+  name?: string;
   category?: string;
   description?: string;
-  price_xof: number;
+  /**
+   * Jamais transmis : depuis le lot 5, un prix de vente ne s'écrit que par la
+   * grille tarifaire (`PUT /price-rules/matrix`), avec son motif et sa trace.
+   * Une prestation naît donc toujours « à tarifer » (`price_xof = 0`).
+   */
+  price_xof?: number | null;
   duration_minutes?: number;
   sort_order?: number;
   is_active?: boolean;
+  /** Gratuité décidée : elle efface le tarif du catalogue. */
+  is_free?: boolean;
+  /** Prestation chiffrée sur devis : invendable au comptoir. */
+  is_quote_only?: boolean;
+  /** Reprendre un modèle du référentiel (jamais un prix : un modèle n'en a pas). */
+  template_code?: string;
+  /** Véhicules concernés — vide = tous ceux que la station accepte. */
+  categories?: string[];
+  includes?: string[];
+  equipment_notes?: string;
+  safety_notes?: string;
+  preconditions?: string;
+  /** Motif d'une modification de tarif (le serveur l'exige pour les règles). */
+  reason?: string;
 }
 
 export function useCreateService() {

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, Banknote, Car, Eye, Filter, Plus, Printer, XCircle } from 'lucide-react'
 
-import { Button, Card, ConfirmDialog, EmptyState, ErrorState, Input, Modal, Money, PageHeader, Select, Spinner, Textarea } from '@/components/ui'
+import { Button, Card, ConfirmDialog, EmptyState, ErrorState, Input, Modal, Money, PageHeader, Select, SkeletonRows, Spinner, Textarea } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
 import { useEmployeeOptions } from '@/features/employees/api'
 import PaymentDialog from '@/features/wash-orders/PaymentDialog'
+import FicheRecu from '@/features/payments/FicheRecu'
 import WashOrderForm from '@/features/wash-orders/WashOrderForm'
 import { useAssignWashOrder, useCancelWashOrder, useWashOrder, useWashOrders, type WashOrderFilters } from '@/features/wash-orders/api'
 import { useStation } from '@/hooks/useStation'
@@ -242,7 +243,7 @@ export default function WashOrdersPage() {
 
       <Card>
         {ordersQuery.isLoading ? (
-          <Spinner label="Chargement des lavages…" />
+          <SkeletonRows rows={6} />
         ) : ordersQuery.isError ? (
           <ErrorState message="Impossible de charger les lavages." onRetry={() => void ordersQuery.refetch()} />
         ) : orders.length === 0 ? (
@@ -286,6 +287,7 @@ export default function WashOrdersPage() {
                       <span className="text-ink">{order.customer_name || 'Client de passage'}</span>
                       <span className="block text-xs text-ink-muted">
                         {order.vehicle_category_name || 'Catégorie non précisée'}
+                        {order.vehicle_usage_name ? ` · ${order.vehicle_usage_name}` : ''}
                         {order.plate ? ` · ${order.plate}` : ''}
                       </span>
                       {order.incident_note ? (
@@ -465,6 +467,9 @@ export default function WashOrdersPage() {
                 <p className="stat-label">Véhicule</p>
                 <p>
                   {detailQuery.data.order.vehicle_category_name || '—'}
+                  {detailQuery.data.order.vehicle_usage_name
+                    ? ` · usage : ${detailQuery.data.order.vehicle_usage_name}`
+                    : ''}
                   {detailQuery.data.order.plate ? ` · ${detailQuery.data.order.plate}` : ''}
                 </p>
               </div>
@@ -544,7 +549,7 @@ export default function WashOrdersPage() {
                   {detailQuery.data.payments.map((payment) => (
                     <li key={payment.id} className="flex items-center justify-between gap-3 px-3 py-2">
                       <span>
-                        {methodLabel(payment.method)}
+                        {payment.payment_method_name || methodLabel(payment.method)}
                         <span className="block text-xs text-ink-muted">
                           {formatDateTime(payment.paid_at)} · {payment.received_by_name || '—'}
                         </span>
@@ -557,6 +562,12 @@ export default function WashOrdersPage() {
                 </ul>
               )}
             </div>
+
+            <FicheRecu
+              orderId={detailQuery.data.order.id}
+              soldee={detailQuery.data.order.due_xof === 0 && detailQuery.data.order.total_xof > 0}
+              annulee={detailQuery.data.order.status === 'canceled'}
+            />
 
             {detailQuery.data.order.notes ? (
               <div>
@@ -629,7 +640,7 @@ export default function WashOrdersPage() {
         }
       >
         <div className="space-y-4">
-          <div className="rounded-xl border border-line bg-surface-muted/50 p-3 text-xs">
+          <div className="panel p-3 text-xs">
             <p className="font-semibold text-ink">
               Véhicule : {assignOrder?.plate || assignOrder?.vehicle_category_name || 'Voiture'} · Client :{' '}
               {assignOrder?.customer_name || 'Client de passage'}
