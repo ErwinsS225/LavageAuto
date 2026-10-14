@@ -18,11 +18,30 @@ Deux chemins mènent à la même session applicative (cookie `washguard_session`
 | --- | --- | --- |
 | Clerk | `POST /auth/clerk` | Le front envoie le jeton de session Clerk en `Authorization: Bearer <jwt>` ; le serveur le vérifie contre la JWKS, synchronise l'utilisateur, puis ouvre le cookie de session. |
 | Mot de passe | `POST /auth/login` | Identifiant + mot de passe, réservé aux comptes créés par l'entreprise (employés). |
-| Déconnexion | `POST /auth/logout` | Efface le cookie. |
+| Déconnexion | `POST /auth/logout` | Ferme la session. |
 | Profil courant | `GET /auth/me` | Renvoie l'utilisateur, son rôle, sa station et **la liste des permissions** de son rôle. |
 
 Le front appelle ces routes avec `credentials: "include"` : le cookie voyage seul,
 aucun jeton n'est stocké dans `localStorage`.
+
+### Session et environnement d'aperçu
+
+**Hors production** (`APP_ENV` différent de `production`), les réponses de
+`POST /auth/register`, `POST /auth/login`, `POST /auth/clerk` et d'acceptation
+d'une invitation portent un champ `session_token` : le même jeton que celui du
+cookie. Le client le garde le temps de l'onglet (`sessionStorage`) et le
+présente en `Authorization: Bearer` ; `POST /auth/logout` ferme alors la session
+quelle que soit la voie empruntée.
+
+Cette tolérance existe parce qu'un aperçu en cadre est servi sous un autre
+domaine que l'API : le cookie y est un cookie **tiers** (ou `Secure` sur une page
+`http`), que le navigateur ne conserve pas — l'interface s'affichait alors
+« Vous devez vous connecter » deux secondes après l'inscription.
+
+En **production**, ce mécanisme est entièrement éteint : le champ `session_token`
+n'est jamais renvoyé, un jeton en `Authorization` n'est jamais accepté comme
+session applicative, et la session reste portée par le seul cookie `HttpOnly`
+(voir `backend/apercu_session.go`).
 
 ## Erreurs
 

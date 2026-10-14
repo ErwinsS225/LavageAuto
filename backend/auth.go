@@ -59,35 +59,52 @@ func bearerToken(r *http.Request) string {
 }
 
 // userFromRequest charge l'utilisateur derrière le jeton de session.
-// Deux sources sont acceptées : le cookie de session applicative (local) ou
-// un jeton de session Clerk (JWT vérifié contre la JWKS).
+// Trois sources sont acceptées : le cookie de session applicative (la voie
+// normale), le même jeton présenté en `Authorization: Bearer` — accepté hors
+// production seulement, voir apercu_session.go — puis un jeton de session
+// Clerk (JWT vérifié contre la JWKS).
 func (a *App) userFromRequest(r *http.Request) (*User, error) {
-	token := ""
+	cookie := ""
 	if c, err := r.Cookie(sessionCookieName); err == nil {
-		token = c.Value
+		cookie = c.Value
 	}
-	if token == "" {
-		token = bearerToken(r)
+	bearer := bearerToken(r)
+
+	jetons := []string{}
+	if cookie != "" {
+		jetons = append(jetons, cookie)
 	}
-	if token == "" {
-		return nil, errUnauthorized
+	if bearer != "" && bearer != cookie && a.apercuAutorise() {
+		jetons = append(jetons, bearer)
+	}
+	for _, token := range jetons {
+		user, err := a.userParJetonDeSession(r.Context(), token)
+		if err == nil {
+			return user, nil
+		}
+		if err != errUnauthorized {
+			// Entreprise suspendue par exemple : le motif est utile, on le rend.
+			return nil, err
+		}
 	}
 
-	ctx := r.Context()
-	var userID string
-	err := a.Pool.QueryRow(ctx,
-		`SELECT user_id FROM sessions WHERE token = $1 AND expires_at > now()`, hashToken(token),
-	).Scan(&userID)
-	if err != nil {
-		// Pas une session locale : si un JWT Clerk est fourni, on l'accepte.
-		if bearer := bearerToken(r); bearer != "" && a.Cfg.ClerkEnabled && clerkKeyfunc != nil {
-			if clerkID, _, verr := verifyClerkSessionToken(bearer); verr == nil {
-				if u, gerr := a.getUserByClerkID(ctx, clerkID); gerr == nil && u != nil && u.IsActive {
-					return u, nil
-				}
+	// Pas une session locale : si un JWT Clerk est fourni, on l'accepte.
+	if bearer != "" && a.Cfg.ClerkEnabled && clerkKeyfunc != nil {
+		if clerkID, _, verr := verifyClerkSessionToken(bearer); verr == nil {
+			if u, gerr := a.getUserByClerkID(r.Context(), clerkID); gerr == nil && u != nil && u.IsActive {
+				return u, nil
 			}
-			return nil, errUnauthorized
 		}
+	}
+	return nil, errUnauthorized
+}
+
+// userParJetonDeSession : l'utilisateur derrière un jeton de session utilisable.
+func (a *App) userParJetonDeSession(ctx context.Context, token string) (*User, error) {
+	var userID string
+	if err := a.Pool.QueryRow(ctx,
+		`SELECT user_id FROM sessions WHERE token = $1 AND expires_at > now()`, hashToken(token),
+	).Scan(&userID); err != nil {
 		return nil, errUnauthorized
 	}
 	user, err := a.getUserByID(ctx, userID)

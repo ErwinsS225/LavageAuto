@@ -186,5 +186,13 @@ VALUES ($1,$2,$3,$4,true)
 ON CONFLICT (station_id, usage_code, category_code) DO UPDATE SET is_active = TRUE`,
 			stationID, couple[0], couple[1], i)
 	}
+
+	// Moyens de paiement : l'amorçage du démarrage est passé **avant** ces
+	// stations, qui viennent d'être créées. Sans cet appel, la caisse de
+	// démonstration n'aurait aucun moyen actif — et l'étape « moyens » du
+	// parcours resterait ouverte sur une installation neuve.
+	if err := a.equiperMoyensPaiement(ctx, orgID, stationID); err != nil {
+		return err
+	}
 	return nil
 }

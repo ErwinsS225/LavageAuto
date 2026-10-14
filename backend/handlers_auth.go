@@ -81,7 +81,10 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, payload)
+	// Hors production, le jeton accompagne le cookie (voir apercu_session.go) :
+	// un navigateur qui refuse le cookie tiers — aperçu dans un cadre — peut
+	// alors présenter le jeton en en-tête.
+	writeJSON(w, http.StatusOK, a.avecJetonApercu(payload, token))
 }
 
 // handleMe renvoie l'utilisateur courant, son organisation, sa station,
@@ -96,9 +99,21 @@ func (a *App) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, payload)
 }
 
+// handleLogout ferme la session, quelle que soit la façon dont elle a été
+// présentée : le cookie de session applicative, et — hors production seulement,
+// voir apercu_session.go — le même jeton passé en `Authorization: Bearer`. Sans
+// cette seconde voie, une déconnexion depuis l'aperçu laisserait la session
+// ouverte côté serveur : le jeton resterait valable.
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
+	jetons := []string{}
 	if c, err := r.Cookie(sessionCookieName); err == nil && c.Value != "" {
-		_, _ = a.Pool.Exec(r.Context(), `DELETE FROM sessions WHERE token = $1`, hashToken(c.Value))
+		jetons = append(jetons, c.Value)
+	}
+	if bearer := bearerToken(r); bearer != "" && a.apercuAutorise() {
+		jetons = append(jetons, bearer)
+	}
+	for _, token := range jetons {
+		_, _ = a.Pool.Exec(r.Context(), `DELETE FROM sessions WHERE token = $1`, hashToken(token))
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})

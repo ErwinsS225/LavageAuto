@@ -79,13 +79,36 @@ Deux limites de l'environnement, à connaître avant de conclure à un échec :
   sondes d'affilée. Sinon la réponse est `429 too_many_requests`, pas un bug.
 - La sonde de suspension a besoin d'un client PostgreSQL (`WASHGUARD_PSQL`).
 
-Pour un aperçu **distant** (interface servie sous un autre domaine que l'API,
-ce qui est le cas d'un aperçu en cadre), deux réglages sont nécessaires, sinon
-le navigateur n'envoie jamais le cookie de session et toutes les routes
-répondent `401` : `VITE_ALLOWED_HOSTS` doit contenir l'hôte d'aperçu, et l'API
-doit tourner avec `SESSION_COOKIE_SAMESITE=none` (avec `SESSION_COOKIE_SECURE=true`
-derrière HTTPS). Rien de tout cela n'est requis sur une installation normale, où
-l'API sert elle-même l'interface compilée.
+### Aperçu distant : la sonde `verif-apercu.py`
+
+Quand l'interface est servie sous un autre domaine que l'API — cas d'un aperçu
+en cadre — le cookie de session est un cookie **tiers**, et le navigateur ne le
+conserve pas : chaque écran répondait `401` alors que la session venait de
+s'ouvrir (« Vous devez vous connecter » juste après l'inscription).
+
+`verif-apercu.py` rejoue ce navigateur-là, **sans jamais conserver de cookie** :
+il s'inscrit, garde le `session_token` que la réponse d'authentification porte
+hors production, et ne présente plus que `Authorization: Bearer` — exactement ce
+que fait `src/lib/api.ts` en développement. Il vérifie ensuite les quinze points
+du parcours : session reconnue sans cookie, dix étapes de mise en route, moyens
+de paiement (espèces actives d'emblée), fiche d'entreprise, prestation créée
+**sans prix**, grille tarifaire, catégorie de véhicule, `401` sans jeton comme
+avec un jeton inventé, cookie de session qui fonctionne toujours, et
+déconnexion qui ferme réellement la session.
+
+```sh
+# API sur 8080, interface (vite) sur 3000
+VITE_ALLOWED_HOSTS='.arena.site,.e2b.app,localhost,127.0.0.1' npm run dev:web
+python3 scripts/verifications/verif-apercu.py
+```
+
+L'hôte d'aperçu se règle en tête du script (`HOST`) et doit aussi figurer dans
+`VITE_ALLOWED_HOSTS`, sinon vite refuse la requête (`403 Blocked request`).
+
+Deux réglages restent nécessaires pour qu'un **navigateur** conserve le cookie
+dans ce cadre, et ne concernent que l'installation : `SESSION_COOKIE_SAMESITE=none`
+avec `SESSION_COOKIE_SECURE=true` derrière HTTPS. Rien de tout cela n'est requis
+sur une installation normale, où l'API sert elle-même l'interface compilée.
 
 ## Détail
 
@@ -100,6 +123,7 @@ l'API sert elle-même l'interface compilée.
 | `sonde-fiche-payee.py` | Une fiche portant un encaissement refuse une nouvelle remise, un retour en atelier et une annulation ; les champs descriptifs (plaque, note, client, laveur) restent modifiables. Couvre aussi le **lot 6** : moyen déclaré inactif refusé (`payment_method_disabled`), moyen à référence refusé sans elle (`400` sur le champ `reference`), libellé du moyen recopié sur l'encaissement, numéro de reçu attribué **une seule fois** (réémission idempotente), mentions fiscales absentes **listées** et non inventées, et paiement **différé** qui ne solde pas la fiche, ne bouge aucun compteur de caisse et n'émet pas de reçu. |
 | `rendu-pages.mjs` | Rend les **quatorze** pages de l'application hors navigateur, avec la session simulée, et exige le contenu attendu. C'est ce contrôle qui attrape l'« écran noir » : une erreur au rendu React vide toute la page. Il a détecté deux cas réels : `useClerk()` appelé sans Clerk configuré sur /connexion, et l'absence de limite de chargement sur l'espace plateforme. |
 | `coherence-routes.mjs` | Chaque lien du menu ou d'une page mène à une route déclarée, chaque route déclarée est atteignable, et chaque permission demandée par un écran existe dans la matrice des rôles du serveur. C'est ce contrôle qui aurait attrapé le menu de la plateforme pointant vers `/admin/*` au lieu de `/administration/*`. |
+| `verif-apercu.py` | Le parcours d'un **premier utilisateur dans l'aperçu** : sans aucun cookie conservé (cookie tiers refusé par le navigateur dans un cadre), la session est portée par le `session_token` rendu au corps de la réponse d'authentification puis présenté en `Authorization: Bearer`. Inscription, `/auth/me`, dix étapes de mise en route, moyens de paiement (espèces seules actives), création d'une prestation **sans prix inventé**, grille tarifaire, catégorie de véhicule, refus `401` sans jeton comme avec un jeton inventé, cookie qui fonctionne toujours, et déconnexion qui vide réellement la session. |
 | `sonde-suspension.py` | Une entreprise suspendue reçoit 403 `organization_suspended` sur le profil **et** sur les routes métier ; la réactivation rend l'accès immédiatement, sans nouvelle connexion. |
 
 ### Accès à la base pour la sonde de suspension

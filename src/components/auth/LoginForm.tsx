@@ -7,7 +7,7 @@
  *   configuré ; le pont ClerkSessionBridge ouvre ensuite la session applicative.
  */
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Eye, EyeOff } from 'lucide-react'
 
@@ -54,6 +54,11 @@ export default function LoginForm() {
   const [error, setError] = useState('')
   const [fields, setFields] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  // Retour depuis une session refusée par le serveur : on le dit, sinon
+  // l'utilisateur croit à une déconnexion qu'il n'a pas demandée.
+  const emplacement = useLocation()
+  const sessionTerminee =
+    (emplacement.state as { session?: string } | null)?.session === 'expiree'
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -218,6 +223,17 @@ export default function LoginForm() {
         </div>
 
         <AnimatePresence>
+          {sessionTerminee && !error ? (
+            <motion.p
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="rounded-field border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning"
+            >
+              Votre session a expiré. Reconnectez-vous pour retrouver votre station.
+            </motion.p>
+          ) : null}
           {error ? (
             <motion.p
               initial={{ opacity: 0, y: -4 }}

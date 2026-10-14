@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import AdminLayout from '@/layouts/AdminLayout'
 import AppLayout from '@/layouts/AppLayout'
 import AuthLayout from '@/layouts/AuthLayout'
+import { sessionVientDExpirer } from '@/lib/session-signal'
 
 // Les pages de connexion et les pages de secours sont chargées tout de suite :
 // ce sont les seules qu'un visiteur voit avant d'être identifié.
@@ -66,7 +67,10 @@ function RequireAuth({ permission }: { permission?: string }) {
     )
   }
   if (!me) {
-    return <Navigate to="/connexion" replace />
+    // Une session qui vient d'être refusée ramène à la connexion avec la
+    // raison : « vous devez vous connecter » sans explication n'aide personne.
+    const expiree = sessionVientDExpirer()
+    return <Navigate to="/connexion" replace state={expiree ? { session: 'expiree' } : undefined} />
   }
   if (me.user.role === 'superadmin') {
     return <Navigate to="/administration" replace />

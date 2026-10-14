@@ -621,8 +621,8 @@ bash scripts/verifications/verifier-env.sh dev # configuration (n'affiche jamais
 | 2 — Identité et registre légal | `[x]` fait | 2026-10-14 | Migration `0005_organization_profile.sql`, `backend/org_profile.go`, `PATCH`/`GET /organizations/current` (registre + états), 4 formulaires branchés ; **29/29** contrôles de la sonde `sonde-onboarding.py`, **23/23 tests Go**, `make check` 5/5 |
 | 3 — Station et horaires | `[x]` fait (sauf ONB-3.6) | 2026-10-14 | Migration `0006_station_profile.sql`, `backend/station_profile.go`, `GET /stations/{id}/profile`, `PUT /stations/{id}/opening-hours`, `PATCH /stations/{id}` étendu, formulaires Station + Horaires ; refus **par jour**, isolation par station testée |
 | 4 — Catégories et usages | `[x]` fait (voir la note du §Lot 4) | 2026-10-14 | Migration `0008_vehicle_catalogue.sql` (4 tables + reprise des anciennes catégories globales), référentiel amorcé à chaque démarrage (13 catégories / 5 familles, 18 usages), écrans « Catégories de véhicules » et « Usages commerciaux » branchés sur les étapes 4 et 5, combinaisons véhicule × usage, `vehicle_usage_id` sur les fiches ; **36/36** contrôles de `sonde-vehicules.py` (nouvelle sonde), **29/29 tests Go**, sondes **40/40 · 30/30 · 23/23 · 35/35 · 8/8 · 1/1**, `make check` 5/5 |
-| 5 — Prestations et tarifs | `[ ]` à faire | — | — |
-| 6 — Caisse et paiements | `[ ]` à faire | — | — |
+| 5 — Prestations et tarifs | `[x]` fait | 2026-10-14 | Migration `0009_services_pricing.sql`, 18 modèles de prestations, matrices prix × catégorie × usage, revue de prix par `PUT /price-rules/matrix` (motif obligatoire) ; **37/37** contrôles de `sonde-tarifs.py`, 7 tests Go dédiés |
+| 6 — Caisse et paiements | `[x]` fait | 2026-10-14 | Migration `0010_payment_methods.sql` (9 moyens par station), encaissement, reçus numérotés, 11 réglages de caisse, étape 10 du parcours ; **22/22** contrôles de `sonde-fiche-payee.py`, 5 tests Go dédiés, `make check` 5/5 |
 | 7 — Personnel, équipements, stock, commandes | `[ ]` à faire | — | — |
 | 8 — Récapitulatif et activation | `[ ]` à faire | — | — |
 | 9 — Sécurité, tests, documentation | `[ ]` à faire | — | — |
@@ -754,6 +754,38 @@ Le lot a donc été **réimplémenté à partir de la spécification** (`ONB-1.1
 Le parcours d'acceptation est rejoué par `scripts/verifications/sonde-invitations.py` : **23/23**
 contrôles au vert, dont l'absence de tout identifiant dans l'aperçu public et le refus explicite
 d'un compte déjà rattaché (`409 invitation_requires_login`).
+
+### 2026-10-14 — Défaut bloquant d'aperçu : « Vous devez vous connecter » après l'inscription
+
+**Le symptôme, tel qu'il a été signalé** : après l'inscription et la connexion, la page de mise en
+route s'affiche deux secondes puis laisse la place à « Mise en route indisponible ». Sur une
+**première utilisation**, c'est-à-dire exactement le parcours que l'onboarding doit rendre possible.
+
+**La cause, mesurée** : ce n'est pas l'onboarding qui échoue, c'est la session qui n'arrive jamais au
+serveur. Un aperçu est affiché dans un cadre servi par **un autre domaine** que l'API : le cookie de
+session y est un cookie **tiers**, et le navigateur ne le conserve pas. `GET /onboarding` répondait
+donc `401`, l'écran affichait le message d'erreur — au lieu de laisser croire à une panne.
+
+**Le correctif, et sa limite** : hors production **seulement** (`APP_ENV` différent de `production`,
+tout est fermé par `backend/apercu_session.go`), la réponse d'authentification (`/auth/register`,
+`/auth/login`, `/auth/clerk`, acceptation d'invitation) porte aussi `session_token` ; l'interface le
+garde pour l'onglet et le présente en `Authorization: Bearer`. Deux défauts annexes trouvés en
+vérifiant :
+
+1. un compte de démonstration restait sans **moyen de paiement actif** (`equiperMoyensPaiement`
+   n'était pas appelé après la création des stations par `seedDemo`) — la caisse neuve refusait donc
+   tout encaissement ;
+2. la **déconnexion** ne fermait que le cookie : présenté en en-tête, le jeton restait valable. Elle
+   ferme désormais la session, quelle que soit la voie empruntée.
+
+**Vérifié, chiffres réels** : `scripts/verifications/verif-apercu.py` (**nouvelle sonde**, sans aucun
+cookie conservé) **15/15** ; `make check` **5/5** ; **46/46 tests Go** ; sondes d'acceptation
+**40/40 · 40/40 · 37/37 · 23/23 · 36/36 · 35/35 · 22/22 · 1/1** ; les 14 écrans se rendent. En
+**production**, contrôle explicite : `session_token` absent du corps, `Bearer` refusé (`401`), cookie
+`HttpOnly` toujours accepté — le paquet compilé du front ne contient plus une seule occurrence du
+mécanisme.
+
+---
 
 ## 12. Décisions tranchées le 2026-10-14
 

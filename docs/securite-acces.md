@@ -43,6 +43,14 @@ vient toujours du serveur** : masquer n'est pas protéger.
 | Webhook Clerk | Signature vérifiée (secret `CLERK_WEBHOOK_SIGNING_SECRET`) avant toute synchronisation. |
 | Origine du jeton Clerk | Restreinte par `CLERK_AUTHORIZED_PARTIES` (et `APP_URL`) : un jeton émis pour une autre application est refusé. |
 
+**En développement seulement**, la réponse d'authentification porte aussi le jeton de
+session en clair (champ `session_token`) et ce jeton est accepté en
+`Authorization: Bearer`. C'est ce qui permet à un aperçu en cadre — où le cookie est
+refusé par le navigateur — de fonctionner. Le mécanisme est entièrement fermé dès que
+`APP_ENV=production` (voir `backend/apercu_session.go`) : plus de jeton dans le corps,
+aucun jeton de session accepté en en-tête. Le paquet compilé du front ne contient alors
+plus une seule ligne de ce mécanisme (`import.meta.env.DEV` devient `false`).
+
 Recommandations : activer les **clés `live`** de Clerk en production (les clés
 `test` n'authentifient que des comptes de test), renseigner `APP_URL` et
 `CLERK_AUTHORIZED_PARTIES`, et activer la double authentification côté Clerk pour

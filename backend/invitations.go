@@ -635,5 +635,5 @@ func (a *App) inscrireParInvitation(w http.ResponseWriter, r *http.Request,
 	// `invitation_accepted` dit à l'écran d'où vient ce compte : il rejoint une
 	// entreprise existante, il n'en a pas créé une.
 	payload["invitation_accepted"] = true
-	writeJSON(w, http.StatusCreated, payload)
+	writeJSON(w, http.StatusCreated, a.avecJetonApercu(payload, session))
 }

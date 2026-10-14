@@ -71,7 +71,7 @@ func (a *App) handleClerkLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, payload)
+	writeJSON(w, http.StatusOK, a.avecJetonApercu(payload, tokenApp))
 }
 
 // handleClerkWebhook reçoit les événements Clerk signés Svix et synchronise

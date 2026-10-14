@@ -164,7 +164,7 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
 		return
 	}
-	writeJSON(w, http.StatusCreated, payload)
+	writeJSON(w, http.StatusCreated, a.avecJetonApercu(payload, token))
 }
 
 // uniqueOrgSlug : identifiant lisible, unique. Deux entreprises peuvent porter
