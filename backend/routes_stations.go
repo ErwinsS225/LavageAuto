@@ -256,7 +256,8 @@ func (a *App) creerStation(w http.ResponseWriter, r *http.Request, sess *session
 	// Moyens de paiement du référentiel produit, copiés pour la station.
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO payment_methods (organization_id, station_id, code, name, family, requires_reference, sort_order)
-		SELECT $1, $2, code, name, family, requires_reference, sort_order FROM payment_methods WHERE station_id IS NULL`,
+		SELECT $1, $2, code, name, family, requires_reference, sort_order
+		FROM payment_methods WHERE organization_id IS NULL AND station_id IS NULL`,
 		organisationID, stationID)
 	// Les sept jours existent toujours : jour non décrit = fermé.
 	for jour := 1; jour <= 7; jour++ {

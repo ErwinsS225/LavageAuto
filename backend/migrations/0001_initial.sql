@@ -1,5 +1,7 @@
 -- Schéma initial WashGuard — appliqué au démarrage (idempotent).
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS organizations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -382,18 +384,26 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS payments_station_idx ON payments(station_id, occurred_at);
 
+-- Lignes à organization_id/station_id NULL = modèle produit (seedé au démarrage).
+-- Lors de la création d'une station, ces modèles sont copiés vers la station.
 CREATE TABLE IF NOT EXISTS payment_methods (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  station_id uuid NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+  organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
+  station_id uuid REFERENCES stations(id) ON DELETE CASCADE,
   code text NOT NULL,
   name text NOT NULL,
   family text NOT NULL DEFAULT 'other',
   requires_reference boolean NOT NULL DEFAULT false,
   sort_order integer NOT NULL DEFAULT 0,
-  is_active boolean NOT NULL DEFAULT true,
-  UNIQUE (station_id, code)
+  is_active boolean NOT NULL DEFAULT true
 );
+-- Modèle produit (organization_id/station_id NULL) ou instance de station.
+CREATE UNIQUE INDEX IF NOT EXISTS payment_methods_tpl_idx ON payment_methods(code)
+  WHERE organization_id IS NULL AND station_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS payment_methods_org_idx ON payment_methods(organization_id, code)
+  WHERE organization_id IS NOT NULL AND station_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS payment_methods_station_idx ON payment_methods(station_id, code)
+  WHERE station_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS cash_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -532,7 +532,9 @@ func (a *App) amorcerReferentiels(ctx context.Context) error {
 	upsertMoyen := `
 		INSERT INTO payment_methods (organization_id, station_id, code, name, family, requires_reference, sort_order)
 		VALUES (NULL, NULL, $1, $2, $3, $4, $5)
-		ON CONFLICT DO NOTHING`
+		ON CONFLICT (code) WHERE organization_id IS NULL AND station_id IS NULL
+		DO UPDATE SET name = EXCLUDED.name, family = EXCLUDED.family,
+		              requires_reference = EXCLUDED.requires_reference, sort_order = EXCLUDED.sort_order`
 	for _, e := range moyensPaiement {
 		ref := e.code == "cheque" || e.code == "transfert" || e.code == "carte"
 		if _, err := a.db.Exec(ctx, upsertMoyen, e.code, e.nom, e.famille, ref, e.ordre); err != nil {

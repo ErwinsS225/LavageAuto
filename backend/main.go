@@ -213,6 +213,15 @@ type routeur struct {
 	app    *App
 }
 
+// avecSession applique la middleware optionnelle des routes publiques :
+// si un cookie de session valide accompagne la requête, le handler reçoit la
+// session (utile à /auth/register pour détecter « déjà connecté »), sinon nil.
+func (rt *routeur) avecSession(h func(http.ResponseWriter, *http.Request, *sessionUtilisateur)) func(http.ResponseWriter, *http.Request, *sessionUtilisateur) {
+	return func(w http.ResponseWriter, r *http.Request, _ *sessionUtilisateur) {
+		h(w, r, rt.app.lireSession(r))
+	}
+}
+
 // interdire : garde-fou commun aux écritures d'exploitation. Tant que la mise
 // en route n'est pas terminée, un poste de caisse vide serait ouvert au public.
 func (a *App) interdire(w http.ResponseWriter, r *http.Request, sess *sessionUtilisateur) bool {
@@ -256,8 +265,14 @@ func (rt *routeur) servirHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rt *routeur) servir(w http.ResponseWriter, r *http.Request) {
+	var premiere405 *route
 	for _, ro := range rt.routes {
 		if ro.methode != r.Method {
+			// mémorise le préfixe correspondant : si aucune route ne matche la
+			// méthode mais qu'un sous-arbre existe, on répondra 405 au lieu de 404.
+			if strings.HasSuffix(ro.prefixe, "/") && strings.HasPrefix(r.URL.Path, ro.prefixe) && premiere405 == nil {
+				premiere405 = &ro
+			}
 			continue
 		}
 		match := false
@@ -283,6 +298,10 @@ func (rt *routeur) servir(w http.ResponseWriter, r *http.Request) {
 			sess = s
 		}
 		ro.handler(w, r, sess)
+		return
+	}
+	if premiere405 != nil {
+		repondreErreur(w, http.StatusMethodNotAllowed, "method_not_allowed", "Méthode non autorisée pour cette ressource.")
 		return
 	}
 	repondreErreur(w, http.StatusNotFound, "not_found", "Ressource introuvable.")
