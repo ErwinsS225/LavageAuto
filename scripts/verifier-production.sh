@@ -29,6 +29,15 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 
+# Le script annonçait lire le fichier .env : il le lit maintenant vraiment, et
+# accepte NEON_DATABASE_URL comme le serveur (l'ancien contrôle exigeait
+# DATABASE_URL et refusait une configuration pourtant valide).
+# shellcheck source=charger-env.sh
+. "$ROOT/scripts/charger-env.sh"
+charger_env "$ROOT/.env"
+DATABASE_URL="${DATABASE_URL:-${NEON_DATABASE_URL:-}}"
+export DATABASE_URL
+
 PORT="${PROD_CHECK_PORT:-8099}"
 DB_NAME="${PROD_CHECK_DATABASE:-washguard_prodcheck}"
 STATIC_DIR="${STATIC_DIR:-../dist}"
@@ -84,7 +93,7 @@ echec() { echo "  ${ROUGE}❌${FIN} $1"; echecs=$((echecs + 1)); ECHECS=$echecs;
 detail(){ echo "     ${GRIS}$1${FIN}"; }
 
 if [ -z "${DATABASE_URL:-}" ]; then
-  echo "${ROUGE}DATABASE_URL n'est pas défini.${FIN} Ce script lit le fichier .env à la racine." >&2
+  echo "${ROUGE}DATABASE_URL (ou NEON_DATABASE_URL) n'est pas défini.${FIN} Ce script lit le fichier .env à la racine." >&2
   exit 2
 fi
 

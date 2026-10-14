@@ -1,17 +1,18 @@
 /*
  * WashGuard — feuille de style d'entrée (Tailwind CSS v4).
  *
- * Pourquoi ce fichier est indispensable :
- * Tailwind v4 ne génère du CSS que pour ce qui est « vu » depuis un point
- * d'entrée. Sans ce fichier — importé une fois dans main.tsx — le plugin
- * @tailwindcss/vite n'a rien à compiler : aucune classe utilitaire n'existe et
- * l'application s'affiche sans aucun style.
+ * Trois rôles :
+ *  1. tokens — couleurs, ombres, rayons, flous et durées d'animation, en clair
+ *     comme en sombre (les composants n'écrivent jamais une couleur en dur) ;
+ *  2. classes sémantiques — `card`, `badge`, `table`, `nav-link`, `stat-value`…
+ *     la couche « composants » de Tailwind, réutilisée par tous les écrans ;
+ *  3. ambiance — fonds dégradés très doux, verre dépoli, squelettes de
+ *     chargement, et respect de « réduire les animations » du système.
  *
- * Le thème est « sombre par défaut » et piloté par la classe `dark` posée sur
- * <html> (voir le script anti-flash dans index.html). Les couleurs sont des
- * tokens sémantiques (ink, surface, line, brand…) dont la valeur change selon
- * le mode clair/sombre, afin que les composants restent identiques en JSX et
- * que `var(--brand)` utilisé dans les graphiques suive aussi le thème.
+ * Le thème est piloté par la classe `dark` posée sur <html> (voir le script
+ * anti-flash dans index.html). Les couleurs sont des tokens sémantiques dont la
+ * valeur change selon le mode, afin que les composants restent identiques en
+ * JSX et que `var(--brand)` utilisé dans les graphiques suive aussi le thème.
  */
 
 @import "tailwindcss";
@@ -20,77 +21,121 @@
    système), car l'application décide elle-même du thème via localStorage. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* --- Valeurs des tokens : mode CLAIR ------------------------------------- */
+/* =========================================================================
+   1. Tokens — mode CLAIR
+   ========================================================================= */
 :root {
   color-scheme: light;
 
+  /* Marque */
   --brand: #1f6feb;
-  --brand-strong: #1a5fd0;
-  --brand-soft: #e7f0fe;
+  --brand-strong: #155ac8;
+  --brand-soft: #e9f1fe;
   --brand-ink: #ffffff;
+  --brand-ring: rgba(31, 111, 235, 0.35);
+  --brand-gradient: linear-gradient(135deg, #4d9bff 0%, #1f6feb 55%, #1550bd 100%);
 
-  --ink: #16191f;
-  --ink-muted: #5a6473;
+  /* Textes */
+  --ink: #0f1724;
+  --ink-muted: #5b6678;
+  --ink-subtle: #8a94a6;
 
-  --line: #e5e8ee;
-  --line-strong: #cdd3dd;
+  /* Traits */
+  --line: #e3e8f0;
+  --line-strong: #ccd5e2;
+  --line-soft: #eef1f7;
 
+  /* Surfaces, du plus bas au plus haut */
   --surface: #ffffff;
-  --surface-muted: #f5f7fa;
-  --surface-hover: #eceff4;
+  --surface-muted: #f6f8fc;
+  --surface-hover: #eef2f9;
+  --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-inset: #f3f5fa;
 
-  --danger: #d92d20;
-  --danger-strong: #b42318;
-  --danger-soft: #fdecea;
+  /* États */
+  --danger: #dc2626;
+  --danger-strong: #b91c1c;
+  --danger-soft: #fdecec;
+  --warning: #d97706;
+  --warning-strong: #b45309;
+  --warning-soft: #fdf3e3;
+  --success: #0e9f6e;
+  --success-strong: #0a7f57;
+  --success-soft: #e6f7f0;
+  --info: #0b7285;
+  --info-soft: #e5f5f8;
 
-  --warning: #dc6803;
-  --warning-soft: #fdf2e2;
+  /* Ombres douces, en couches : une ombre de contact + une ombre portée.
+     L'empilement de deux ombres très légères donne l'effet « surélevé » sans
+     le cerne gris d'une ombre unique trop marquée. */
+  --e1: 0 1px 2px rgba(15, 23, 36, 0.05), 0 1px 3px -1px rgba(15, 23, 36, 0.06);
+  --e2: 0 1px 2px rgba(15, 23, 36, 0.04), 0 6px 16px -6px rgba(15, 23, 36, 0.12);
+  --e3: 0 2px 4px -1px rgba(15, 23, 36, 0.05), 0 14px 34px -12px rgba(15, 23, 36, 0.18);
+  --e-float: 0 24px 56px -16px rgba(15, 23, 36, 0.28), 0 6px 16px -8px rgba(15, 23, 36, 0.14);
+  --e-glow: 0 10px 30px -12px rgba(31, 111, 235, 0.45);
+  --e-inset: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --e-inset-strong: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 
-  --success: #12805c;
-  --success-soft: #e5f5ec;
-
-  /* Fond de page (sous les cartes). Cohérent avec <meta theme-color> clair. */
-  --app-bg: #f4f6f9;
+  /* Fond de page (sous les cartes). */
+  --app-bg: #eef2f8;
 }
 
-/* --- Valeurs des tokens : mode SOMBRE (par défaut) ----------------------- */
+/* =========================================================================
+   Tokens — mode SOMBRE (par défaut)
+   ========================================================================= */
 .dark {
   color-scheme: dark;
 
-  --brand: #3d92f5;
-  --brand-strong: #2a7ae0;
-  --brand-soft: #16283f;
-  --brand-ink: #ffffff;
+  --brand: #58a6ff;
+  --brand-strong: #3d8ef7;
+  --brand-soft: #12253d;
+  --brand-ink: #06121f;
+  --brand-ring: rgba(88, 166, 255, 0.38);
+  --brand-gradient: linear-gradient(135deg, #7cbcff 0%, #3d8ef7 55%, #2160c4 100%);
 
-  --ink: #eaeef4;
-  --ink-muted: #98a2b3;
+  --ink: #e9eef7;
+  --ink-muted: #97a3b6;
+  --ink-subtle: #6c7789;
 
-  --line: #262b36;
-  --line-strong: #3a4150;
+  --line: #222a37;
+  --line-strong: #333d4d;
+  --line-soft: #1a212b;
 
-  --surface: #101319;
-  --surface-muted: #191d26;
-  --surface-hover: #222734;
+  --surface: #10141c;
+  --surface-muted: #161b25;
+  --surface-hover: #1d2431;
+  --surface-glass: rgba(16, 20, 28, 0.72);
+  --surface-inset: #0d1119;
 
-  --danger: #e5484d;
-  --danger-strong: #c2353a;
-  --danger-soft: #331a1d;
+  --danger: #f87171;
+  --danger-strong: #ef4444;
+  --danger-soft: #2a1418;
+  --warning: #fbbf24;
+  --warning-strong: #f59e0b;
+  --warning-soft: #2b2110;
+  --success: #34d399;
+  --success-strong: #10b981;
+  --success-soft: #0f2a21;
+  --info: #67e8f9;
+  --info-soft: #0d2630;
 
-  --warning: #f0a52a;
-  --warning-soft: #33260f;
-
-  --success: #2fae74;
-  --success-soft: #12301f;
+  /* En sombre, l'ombre seule ne suffit pas : on ajoute un liseré clair très
+     discret, qui dessine le contour de l'élément surélevé. */
+  --e1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --e2: 0 4px 14px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --e3: 0 14px 34px -14px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --e-float: 0 28px 70px -20px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --e-glow: 0 12px 34px -14px rgba(88, 166, 255, 0.5);
+  --e-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --e-inset-strong: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 
   /* Reprend la teinte #0b0d12 annoncée dans index.html. */
-  --app-bg: #0b0d12;
+  --app-bg: #0a0c11;
 }
 
-/* --- Exposition des tokens à Tailwind ------------------------------------
-   `inline` est essentiel : il fait pointer les utilitaires directement sur les
-   variables ci-dessus (ex. .bg-brand { background-color: var(--brand) }), si
-   bien que changer de thème change instantanément toutes les classes — et les
-   opacités (bg-brand/40) fonctionnent via color-mix. */
+/* =========================================================================
+   2. Exposition des tokens à Tailwind
+   ========================================================================= */
 @theme inline {
   --color-brand: var(--brand);
   --color-brand-strong: var(--brand-strong);
@@ -99,13 +144,16 @@
 
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
 
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-line-soft: var(--line-soft);
 
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-surface-hover: var(--surface-hover);
+  --color-surface-inset: var(--surface-inset);
   --color-canvas: var(--app-bg);
 
   --color-danger: var(--danger);
@@ -113,17 +161,45 @@
   --color-danger-soft: var(--danger-soft);
 
   --color-warning: var(--warning);
+  --color-warning-strong: var(--warning-strong);
   --color-warning-soft: var(--warning-soft);
 
   --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
   --color-success-soft: var(--success-soft);
+
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  /* Ombres : `shadow-e1`, `shadow-e2`, `shadow-e3`, `shadow-float`, `shadow-glow`. */
+  --shadow-e1: var(--e1);
+  --shadow-e2: var(--e2);
+  --shadow-e3: var(--e3);
+  --shadow-float: var(--e-float);
+  --shadow-glow: var(--e-glow);
+
+  /* Rayons : `rounded-card` pour les panneaux, `rounded-field` pour les champs. */
+  --radius-field: 0.625rem;
+  --radius-card: 1rem;
+  --radius-panel: 1.25rem;
+
+  /* Courbes : `ease-soft` (sortie très douce) et `ease-snap` (retour rapide). */
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-snap: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Flou du verre dépoli : `backdrop-blur-glass`. */
+  --blur-glass: 16px;
 }
 
-/* --- Base ---------------------------------------------------------------- */
+/* =========================================================================
+   3. Base
+   ========================================================================= */
 @layer base {
   html {
-    /* Le thème est appliqué sur <html> ; on ancre les couleurs de page ici. */
     background-color: var(--app-bg);
+    /* Le changement de thème ne doit pas clignoter : on fait glisser les
+       couleurs sur 200 ms, sans animer la mise en page. */
+    transition: background-color 220ms var(--ease-snap);
   }
 
   body {
@@ -138,11 +214,682 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* Titres : léger resserrement, comme sur les interfaces soignées. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.012em;
+  }
+
   /* Les contrôles de formulaire suivent le thème (fond sombre, texte clair). */
   input,
   select,
   textarea,
   button {
     color: inherit;
+    font: inherit;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--brand) 28%, transparent);
+    color: var(--ink);
+  }
+
+  /* Anneau de focus unique, visible au clavier seulement. */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  /* Barre de défilement discrète, accords avec le thème. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--line-strong) 85%, transparent);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--ink-subtle) 70%, transparent);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* =========================================================================
+   4. Classes sémantiques (couche composants : les utilitaires gagnent)
+   ========================================================================= */
+@layer components {
+  /* ---- Fonds d'ambiance ------------------------------------------------ */
+  /* Halo de marque très diffus, posé derrière l'application : donne de la
+     profondeur au fond sans jamais gêner la lecture. */
+  .app-aurora {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .app-aurora::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 32rem at 12% -10%, color-mix(in oklab, var(--brand) 16%, transparent), transparent 60%),
+      radial-gradient(48rem 30rem at 105% 0%, color-mix(in oklab, var(--success) 12%, transparent), transparent 55%),
+      radial-gradient(40rem 26rem at 50% 120%, color-mix(in oklab, var(--brand) 10%, transparent), transparent 60%);
+    opacity: 0.9;
+  }
+
+  /* Toile quadrillée très fine (vitrine, en-têtes de page). */
+  .grid-lines {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--line) 70%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--line) 70%, transparent) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(70% 60% at 50% 0%, #000 20%, transparent 100%);
+  }
+
+  /* ---- Surfaces ------------------------------------------------------- */
+  .card {
+    border-radius: var(--radius-card);
+    border: 1px solid var(--line);
+    background-color: var(--surface);
+    box-shadow: var(--e1), var(--e-inset);
+    transition:
+      box-shadow 260ms var(--ease-soft),
+      border-color 260ms var(--ease-soft),
+      transform 260ms var(--ease-soft),
+      background-color 260ms var(--ease-soft);
+  }
+
+  /* Carte cliquable : elle se soulève, son contour se précise, le halo
+     s'allume. Trois changements très légers plutôt qu'un seul brutal. */
+  .card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+    box-shadow: var(--e3), var(--e-inset), var(--e-glow);
+  }
+
+  .card-interactive:active {
+    transform: translateY(0);
+    box-shadow: var(--e1), var(--e-inset);
+  }
+
+  .card-glass {
+    border-radius: var(--radius-card);
+    border: 1px solid color-mix(in oklab, var(--line) 80%, transparent);
+    background-color: var(--surface-glass);
+    backdrop-filter: blur(var(--blur-glass)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(150%);
+    box-shadow: var(--e2), var(--e-inset);
+  }
+
+  .panel {
+    border-radius: var(--radius-card);
+    border: 1px solid var(--line);
+    background-color: var(--surface-muted);
+  }
+
+  .panel-inset {
+    border-radius: var(--radius-field);
+    border: 1px solid var(--line-soft);
+    background-color: var(--surface-inset);
+    box-shadow: inset 0 1px 2px rgba(15, 23, 36, 0.04);
+  }
+
+  .dark .panel-inset {
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Filet lumineux posé en haut d'un panneau : marque la surélévation. */
+  .hairline-highlight {
+    position: relative;
+  }
+
+  .hairline-highlight::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      color-mix(in oklab, var(--brand) 55%, transparent),
+      transparent
+    );
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  /* ---- Badges --------------------------------------------------------- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    letter-spacing: 0.005em;
+    white-space: nowrap;
+    box-shadow: var(--e-inset);
+    transition:
+      background-color 220ms var(--ease-soft),
+      color 220ms var(--ease-soft),
+      border-color 220ms var(--ease-soft);
+  }
+
+  /* Puce de choix : sélecteur d'étape du parcours, types de lavage. Un bouton
+     qui se coche, entre le badge (qui se lit) et le bouton (qui agit) — il doit
+     donc avoir l'air cliquable au repos et franchement actif une fois coché. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background-color: var(--surface-muted);
+    padding: 0.35rem 0.7rem;
+    color: var(--ink-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.1rem;
+    box-shadow: var(--e-inset);
+    transition:
+      background-color 220ms var(--ease-soft),
+      border-color 220ms var(--ease-soft),
+      color 220ms var(--ease-soft),
+      box-shadow 220ms var(--ease-soft);
+  }
+
+  .chip:hover:not(:disabled) {
+    background-color: var(--surface-hover);
+    border-color: var(--line-strong);
+    color: var(--ink);
+  }
+
+  .chip-active {
+    background-color: var(--brand-soft);
+    border-color: color-mix(in oklab, var(--brand) 34%, transparent);
+    color: var(--brand);
+    font-weight: 600;
+    box-shadow: var(--e1), var(--e-inset);
+  }
+
+  .badge-neutral {
+    background-color: var(--surface-muted);
+    border-color: var(--line);
+    color: var(--ink-muted);
+  }
+
+  .badge-brand {
+    background-color: var(--brand-soft);
+    border-color: color-mix(in oklab, var(--brand) 28%, transparent);
+    color: var(--brand);
+  }
+
+  .badge-success {
+    background-color: var(--success-soft);
+    border-color: color-mix(in oklab, var(--success) 28%, transparent);
+    color: var(--success);
+  }
+
+  .badge-warning {
+    background-color: var(--warning-soft);
+    border-color: color-mix(in oklab, var(--warning) 30%, transparent);
+    color: var(--warning);
+  }
+
+  .badge-danger {
+    background-color: var(--danger-soft);
+    border-color: color-mix(in oklab, var(--danger) 28%, transparent);
+    color: var(--danger);
+  }
+
+  .badge-info {
+    background-color: var(--info-soft);
+    border-color: color-mix(in oklab, var(--info) 28%, transparent);
+    color: var(--info);
+  }
+
+  /* Pastille de couleur, pour les légendes de graphiques. */
+  .dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    box-shadow: 0 0 0 3px color-mix(in oklab, currentColor 18%, transparent);
+  }
+
+  /* ---- Champs --------------------------------------------------------- */
+  .input,
+  .select,
+  .textarea {
+    width: 100%;
+    border-radius: var(--radius-field);
+    border: 1px solid var(--line);
+    background-color: var(--surface);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--ink);
+    box-shadow: inset 0 1px 2px rgba(15, 23, 36, 0.04);
+    transition:
+      border-color 200ms var(--ease-soft),
+      box-shadow 200ms var(--ease-soft),
+      background-color 200ms var(--ease-soft);
+  }
+
+  .dark .input,
+  .dark .select,
+  .dark .textarea {
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+
+  .input::placeholder,
+  .textarea::placeholder {
+    color: var(--ink-subtle);
+  }
+
+  .input:hover,
+  .select:hover,
+  .textarea:hover {
+    border-color: var(--line-strong);
+  }
+
+  .input:focus,
+  .select:focus,
+  .textarea:focus {
+    outline: none;
+    border-color: color-mix(in oklab, var(--brand) 70%, var(--line));
+    /* Anneau souple : l'ombre diffuse plutôt qu'un trait dur. */
+    box-shadow: 0 0 0 4px var(--brand-ring), inset 0 1px 2px rgba(15, 23, 36, 0.03);
+  }
+
+  .input:disabled,
+  .select:disabled,
+  .textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    background-color: var(--surface-muted);
+  }
+
+  /* Case à cocher et bouton radio : couleur de marque, taille confortable. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--brand);
+    cursor: pointer;
+  }
+
+  /* Liste déroulante : chevron discret, aligné à droite. */
+  select.select,
+  select.input {
+    appearance: none;
+    padding-right: 2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a94a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+  }
+
+  .error-text {
+    margin-top: 0.25rem;
+    font-size: 0.8125rem;
+    color: var(--danger);
+  }
+
+  /* ---- Navigation ----------------------------------------------------- */
+  .nav-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    border-radius: var(--radius-field);
+    padding: 0.55rem 0.7rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--ink-muted);
+    text-decoration: none;
+    transition:
+      background-color 200ms var(--ease-soft),
+      color 200ms var(--ease-soft),
+      transform 200ms var(--ease-soft);
+  }
+
+  .nav-link:hover {
+    background-color: var(--surface-hover);
+    color: var(--ink);
+    transform: translateX(2px);
+  }
+
+  /* Élément actif : fond teinté, texte de marque, et un liseré à gauche qui
+     rappelle la surélévation des cartes. */
+  .nav-link-active,
+  .nav-link-active:hover {
+    background-color: var(--brand-soft);
+    color: var(--brand);
+    transform: none;
+    box-shadow: var(--e-inset);
+  }
+
+  .nav-link-active::before {
+    content: "";
+    position: absolute;
+    left: -0.5rem;
+    top: 50%;
+    height: 1.1rem;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--brand-gradient);
+    transform: translateY(-50%);
+    box-shadow: var(--e-glow);
+  }
+
+  /* ---- Indicateurs ---------------------------------------------------- */
+  .stat-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--ink-muted);
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+    font-weight: 650;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+
+  .metric {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Tableaux ------------------------------------------------------- */
+  /* Cadre surélevé + en-tête collant + lignes séparées par un filet : la
+     lecture reste stable sur 70 lignes, et le survol suit la souris. */
+  .table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+  }
+
+  .table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.6rem 1rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-subtle);
+    background-color: color-mix(in oklab, var(--surface) 88%, var(--surface-muted));
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  .table tbody td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--line-soft);
+    color: var(--ink);
+    vertical-align: middle;
+  }
+
+  .table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .table tbody tr {
+    transition:
+      background-color 180ms var(--ease-soft),
+      box-shadow 180ms var(--ease-soft);
+  }
+
+  .table tbody tr:hover {
+    background-color: color-mix(in oklab, var(--brand) 5%, transparent);
+  }
+
+  .table tbody tr:hover td:first-child {
+    box-shadow: inset 3px 0 0 0 color-mix(in oklab, var(--brand) 60%, transparent);
+  }
+
+  /* Dans une carte, les coins hauts de l'en-tête suivent l'arrondi du cadre :
+     sans cela, le fond de l'en-tête colle au bord et casse l'arrondi. */
+  .card .table thead th:first-child,
+  .card-glass .table thead th:first-child {
+    border-top-left-radius: calc(var(--radius-card) - 1px);
+  }
+
+  .card .table thead th:last-child,
+  .card-glass .table thead th:last-child {
+    border-top-right-radius: calc(var(--radius-card) - 1px);
+  }
+
+  .table tfoot td {
+    padding: 0.7rem 1rem;
+    border-top: 1px solid var(--line);
+    background-color: var(--surface-muted);
+    font-weight: 600;
+  }
+
+  /* Entrée des lignes de tableau : 320 ms, 3 px, une seule fois — les lignes
+     n'étant pas remontées par React, l'animation ne se rejoue pas à chaque
+     rafraîchissement de données. */
+  @keyframes row-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .table tbody tr {
+    animation: row-in 320ms var(--ease-soft) both;
+  }
+
+  /* ---- États ---------------------------------------------------------- */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-field);
+    background-color: var(--surface-muted);
+  }
+
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--ink) 6%, transparent),
+      transparent
+    );
+    animation: shimmer 1.6s var(--ease-snap) infinite;
+  }
+
+  /* ---- Graphiques ----------------------------------------------------- */
+  /* Encadré des graphiques : même langage que les cartes, mais sans ombre
+     portée — le graphique lui-même porte l'information. */
+  .chart-frame {
+    border-radius: var(--radius-card);
+    border: 1px solid var(--line);
+    background:
+      linear-gradient(180deg, color-mix(in oklab, var(--surface-muted) 55%, transparent), transparent 42%),
+      var(--surface);
+    box-shadow: var(--e-inset);
+    padding: 0.5rem 0.5rem 0;
+  }
+
+  .chart-tooltip {
+    border-radius: 0.75rem;
+    border: 1px solid var(--line);
+    background-color: var(--surface-glass);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    box-shadow: var(--e-float);
+    padding: 0.5rem 0.7rem;
+    font-size: 0.75rem;
+  }
+
+  /* ---- Boutons -------------------------------------------------------- */
+  /* Variante « marque » : dégradé + reflet qui balaie au survol. */
+  .btn-brand {
+    background-image: var(--brand-gradient);
+    color: #fff;
+    box-shadow: var(--e1), var(--e-inset-strong);
+  }
+
+  .btn-brand:hover:not(:disabled) {
+    box-shadow: var(--e2), var(--e-inset-strong), var(--e-glow);
+    filter: saturate(108%);
+  }
+
+  .btn-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-sheen::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 45%;
+    left: -60%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    transform: skewX(-18deg);
+    transition: left 620ms var(--ease-soft);
+    pointer-events: none;
+  }
+
+  .btn-sheen:hover::after {
+    left: 120%;
+  }
+
+  /* ---- Divers --------------------------------------------------------- */
+  .hairline {
+    border-color: var(--line);
+  }
+
+  .divider-soft {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--line), transparent);
+  }
+
+  .link-soft {
+    color: var(--brand);
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in oklab, var(--brand) 35%, transparent);
+    transition: border-color 200ms var(--ease-soft), color 200ms var(--ease-soft);
+  }
+
+  .link-soft:hover {
+    border-bottom-color: var(--brand);
+  }
+}
+
+/* =========================================================================
+   5. Animations
+   ========================================================================= */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate3d(2%, -3%, 0) scale(1.06);
+    opacity: 1;
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@utility animate-aurora {
+  animation: aurora-drift 18s ease-in-out infinite;
+}
+
+@utility animate-float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+@utility animate-pulse-soft {
+  animation: pulse-soft 2.4s ease-in-out infinite;
+}
+
+/* =========================================================================
+   6. Accessibilité : « réduire les animations »
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Impression : on retire halos, ombres et couleurs de fond inutiles. */
+@media print {
+  .app-aurora::before {
+    display: none;
+  }
+
+  .card,
+  .card-glass,
+  .chart-frame {
+    box-shadow: none !important;
   }
 }

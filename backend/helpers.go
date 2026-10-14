@@ -95,6 +95,14 @@ func (a *App) buildMePayload(ctx context.Context, user *User) (map[string]any, e
 			payload["subscription"] = subPayload
 		}
 	}
+	// État de configuration : seulement pour les profils qui peuvent le lire
+	// (le laveur et le caissier ne sont pas concernés par l'onboarding et ne
+	// doivent pas être redirigés vers un parcours qu'ils ne peuvent pas remplir).
+	if user.OrganizationID != nil && hasPermission(user, "settings:view") {
+		if parcours, err := a.payloadOnboarding(ctx, *user.OrganizationID); err == nil {
+			payload["onboarding"] = parcours
+		}
+	}
 	return payload, nil
 }
 
@@ -119,3 +127,6 @@ func parseJSONB(raw []byte, dest any) {
 func setClause(column string, n int) string {
 	return fmt.Sprintf("%s = $%d", column, n)
 }
+
+// timeLayout : format d'horodatage unique des réponses JSON.
+const timeLayout = "2006-01-02T15:04:05Z07:00"

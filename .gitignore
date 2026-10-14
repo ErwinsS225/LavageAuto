@@ -2,22 +2,28 @@
 node_modules/
 .npm/
 
-# Build frontend
+# Build frontend (artefacts régénérables : ne pas versionner)
+/dist/
 frontend/dist/
 frontend/.vite/
 frontend/.smoke-dist/
 *.tsbuildinfo
 
 # Build backend
+backend/backend
 backend/bin/
 backend/tmp/
 washguard-api
 *.exe
 
 # Variables d'environnement (ne jamais committer de secrets)
+# Tout ce qui commence par .env est ignoré — y compris les sauvegardes
+# (.env.backup.*, .env.avant-maj) et les variantes par environnement
+# (.env.local, .env.production…). Seul le gabarit reste versionné.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.env.backup*
 
 # Éditeurs / OS
 .DS_Store

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Banknote, KeyRound, Pencil, Plus, ShieldCheck, UserCheck, UserRound, UserX } from 'lucide-react'
 
-import { Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Select, Spinner, StatCard } from '@/components/ui'
+import { Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Select, SkeletonRows, Spinner, StatCard } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
 import { useEmployeeActivity, useCreateEmployee, useEmployees, useResetEmployeePassword, useUpdateEmployee, type EmployeeCreated, type EmployeeInput } from '@/features/employees/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -199,7 +199,7 @@ export default function EmployeesPage() {
 
       {/* Guide des 3 rôles opérationnels */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-line bg-surface p-3.5 text-xs shadow-xs">
+        <div className="card p-3.5 text-xs shadow-xs">
           <div className="flex items-center gap-1.5 font-bold text-ink">
             <span className="text-base">👔</span> Gérant
           </div>
@@ -207,7 +207,7 @@ export default function EmployeesPage() {
             Supervision opérationnelle : tableau de bord, catalogue des tarifs, approbation des dépenses, contrôle des clôtures de caisse, affectation des laveurs et journal d'audit.
           </p>
         </div>
-        <div className="rounded-xl border border-line bg-surface p-3.5 text-xs shadow-xs">
+        <div className="card p-3.5 text-xs shadow-xs">
           <div className="flex items-center gap-1.5 font-bold text-ink">
             <span className="text-base">🏷️</span> Caissier / Caissière
           </div>
@@ -215,7 +215,7 @@ export default function EmployeesPage() {
             Accueil clients, création des fiches de lavage, encaissements (espèces, mobile money), émission des reçus, ouverture et clôture de sa caisse avec comptage de fin de shift.
           </p>
         </div>
-        <div className="rounded-xl border border-line bg-surface p-3.5 text-xs shadow-xs">
+        <div className="card p-3.5 text-xs shadow-xs">
           <div className="flex items-center gap-1.5 font-bold text-ink">
             <span className="text-base">🧼</span> Laveur / Laveuse
           </div>
@@ -264,7 +264,7 @@ export default function EmployeesPage() {
 
       <Card>
         {employeesQuery.isLoading ? (
-          <Spinner label="Chargement de l’équipe…" />
+          <SkeletonRows rows={6} />
         ) : employeesQuery.isError ? (
           <ErrorState message="Impossible de charger les employés." onRetry={() => void employeesQuery.refetch()} />
         ) : employees.length === 0 ? (
@@ -460,7 +460,7 @@ export default function EmployeesPage() {
             }}
           </Field>
 
-          <div className="rounded-xl border border-line bg-surface-muted/40 p-3">
+          <div className="panel p-3">
             <Field
               label="Commission"
               hint="Le barème de la station s’applique par défaut. Une exception posée ici suit le compte : changer le tarif de la station ne la modifie pas."

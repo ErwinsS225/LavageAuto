@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, query } from '@/lib/api'
-import type { PaymentMethod, WashOrder, WashStatus } from '@/types'
+import type { PaymentMethod, WashOrder, WashOrderPayment, WashStatus } from '@/types'
 
 export const washOrdersKey = (filters?: Record<string, unknown>) => ['wash-orders', filters ?? {}] as const
 export const washOrderKey = (id: string) => ['wash-order', id] as const
@@ -55,17 +55,8 @@ export function useWashOrders(filters: WashOrderFilters) {
 
 export interface WashOrderDetail {
   order: WashOrder
-  payments: Array<{
-    id: string
-    method: PaymentMethod
-    amount_xof: number
-    reference: string
-    note: string
-    paid_at: string
-    received_by_name: string
-    status: 'valid' | 'voided'
-    void_reason?: string
-  }>
+  /** Type partagé avec la fiche : une seule définition des encaissements. */
+  payments: WashOrderPayment[]
 }
 
 export function useWashOrder(id: string | null) {
@@ -87,6 +78,8 @@ export interface CreateWashOrderInput {
   customer_id?: string
   customer_name?: string
   vehicle_category_id?: string
+  /** Usage commercial : second référentiel, indépendant de la catégorie. */
+  vehicle_usage_id?: string
   plate?: string
   employee_id?: string
   discount_xof?: number
@@ -112,6 +105,7 @@ export interface UpdateWashOrderInput {
   customer_id?: string | null
   customer_name?: string
   vehicle_category_id?: string | null
+  vehicle_usage_id?: string | null
   plate?: string
   employee_id?: string | null
   discount_xof?: number
@@ -164,7 +158,14 @@ export function useCancelWashOrder() {
 
 export interface PaymentInput {
   amount_xof: number
-  method: PaymentMethod
+  /**
+   * Moyen **déclaré** par la station (Orange Money, Wave, chèque…). C'est la
+   * voie normale : le serveur en déduit la famille comptable, l'exigence de
+   * référence et la permission du différé, et recopie le libellé choisi.
+   */
+  payment_method_id?: string
+  /** Famille canonique, quand aucun moyen déclaré n'existe. */
+  method?: PaymentMethod
   reference?: string
   note?: string
   /** Clé du geste : voir src/lib/idempotence.ts. */

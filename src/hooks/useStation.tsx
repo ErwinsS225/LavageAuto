@@ -1,9 +1,13 @@
 /**
- * useStation : sélection de la station de travail + thème (clair/sombre).
- * Le layout importe les trois ici : useStation, ThemeProvider, useTheme.
+ * Station de travail (sélection partagée) et thème clair/sombre.
+ *
+ * Le fournisseur charge la liste des stations **une seule fois** et la met à
+ * disposition de toute l'application : le sélecteur de l'en-tête, les écrans
+ * qui filtrent par station et les formulaires lisent tous la même source.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+
 import { api } from '@/lib/api'
 import type { Station } from '@/types'
 
@@ -57,63 +61,51 @@ export function useTheme(): ThemeContextValue {
 }
 
 // ---------------------------------------------------------------------------
-// Stations
+// Station courante
 // ---------------------------------------------------------------------------
 
 interface StationContextValue {
   stationId: string
   station: Station | null
+  stations: Station[]
   selectStation: (id: string) => void
+  loading: boolean
 }
 
 const StationContext = createContext<StationContextValue>({
   stationId: '',
   station: null,
+  stations: [],
   selectStation: () => { },
+  loading: false,
 })
 
 export function useStation(): StationContextValue {
   return useContext(StationContext)
 }
 
-export function useStations(enabled: boolean): Station[] {
-  const { setStations } = useStationSource()
+export function StationProvider({ children }: { children: ReactNode }) {
+  const [stationId, setStationId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  })
+
+  // Le serveur renvoie un tableau de stations (celles de l'entreprise, ou la
+  // seule station du compte pour un caissier).
   const query = useQuery<Station[]>({
-    queryKey: ['stations-list'],
+    queryKey: ['stations'],
     queryFn: () => api.get<Station[]>('/stations'),
-    enabled,
     staleTime: 5 * 60_000,
   })
+  const stations = useMemo(() => query.data ?? [], [query.data])
+
+  // Aucun choix explicite : la station marquée par défaut, sinon la première.
   useEffect(() => {
-    setStations(query.data ?? [])
-  }, [query.data, setStations])
-  return query.data ?? []
-}
-
-/**
- * Source partagée : le layout charge la liste et fournit la sélection à toute
- * l'application via le contexte.
- */
-function useStationSource() {
-  const context = useContext(StationSourceContext)
-  if (!context) throw new Error('StationSourceProvider manquant')
-  return context
-}
-
-const StationSourceContext = createContext<{
-  stations: Station[]
-  stationId: string
-  selectStation: (id: string) => void
-  setStations: (list: Station[]) => void
-} | null>(null)
-
-export function StationProvider({ children }: { children: ReactNode }) {
-  const [stations, setStations] = useState<Station[]>([])
-  const [stationId, setStationId] = useState<string>(() => localStorage.getItem(STORAGE_KEY) ?? '')
-
-  // Fallback : première station (ou celle marquée par défaut) quand aucun choix.
-  useEffect(() => {
-    if (stationId || stations.length === 0) return
+    if (stationId && stations.some((station) => station.id === stationId)) return
+    if (stations.length === 0) return
     const fallback = stations.find((station) => station.is_default) ?? stations[0]
     if (fallback) setStationId(fallback.id)
   }, [stationId, stations])
@@ -127,18 +119,12 @@ export function StationProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const value = useMemo(
-    () => ({ stations, stationId, selectStation, setStations }),
-    [stations, stationId, selectStation],
-  )
-
-  // Le contexte de consommation expose stationId + station (objet résolu).
   const station = stations.find((item) => item.id === stationId) ?? null
-  const consumer = useMemo(() => ({ stationId, station, selectStation }), [stationId, station, selectStation])
 
-  return (
-    <StationSourceContext.Provider value={value}>
-      <StationContext.Provider value={consumer}>{children}</StationContext.Provider>
-    </StationSourceContext.Provider>
+  const value = useMemo<StationContextValue>(
+    () => ({ stationId, station, stations, selectStation, loading: query.isLoading }),
+    [stationId, station, stations, selectStation, query.isLoading],
   )
+
+  return <StationContext.Provider value={value}>{children}</StationContext.Provider>
 }

@@ -16,18 +16,29 @@ func (a *App) handleCustomersList(w http.ResponseWriter, r *http.Request) {
 	if status == "" {
 		status = "all"
 	}
+	// Un caissier ne voit que les clients de sa station.
+	stationID := scopedStationID(user)
+	if requested := r.URL.Query().Get("station_id"); requested != "" {
+		resolved, err := a.stationDeTravail(r.Context(), user, requested)
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		stationID = resolved
+	}
 
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT id, organization_id, station_id, full_name, phone, plate, vehicle_model,
 		       notes, is_active, created_at
 		FROM customers
 		WHERE organization_id = $1
+		  AND ($4 = '' OR station_id = $4)
 		  AND ($2 = 'all' OR ($2 = 'active' AND is_active) OR ($2 = 'inactive' AND NOT is_active))
 		  AND ($3 = '' OR lower(full_name) LIKE '%' || $3 || '%'
 		            OR lower(phone) LIKE '%' || $3 || '%'
 		            OR lower(plate) LIKE '%' || $3 || '%')
 		ORDER BY created_at DESC`,
-		user.OrganizationID, status, search)
+		user.OrganizationID, status, search, stationID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
 		return
@@ -52,8 +63,8 @@ func (a *App) handleCustomersList(w http.ResponseWriter, r *http.Request) {
 			"id": c.ID, "organization_id": c.OrganizationID, "station_id": c.StationID,
 			"full_name": c.FullName, "phone": c.Phone, "plate": c.Plate,
 			"vehicle_model": c.VehicleModel, "notes": c.Notes, "is_active": c.IsActive,
-			"created_at":      c.CreatedAt.Format(time.RFC3339),
-			"wash_count":      c.WashCount, "total_spent_xof": c.TotalSpentXOF,
+			"created_at": c.CreatedAt.Format(timeLayout),
+			"wash_count": c.WashCount, "total_spent_xof": c.TotalSpentXOF,
 			"last_visit_at": c.LastVisitAt,
 		})
 	}
@@ -74,12 +85,13 @@ func (a *App) handleCustomerCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation_error", "Le nom du client est obligatoire.", nil)
 		return
 	}
-	stationID := body.StationID
-	if stationID == "" {
-		stationID = deref(user.StationID)
+	stationID, err := a.resolveStation(r.Context(), user, body.StationID)
+	if err != nil {
+		writeAPIError(w, err)
+		return
 	}
 	id := newID("cust")
-	_, err := a.Pool.Exec(r.Context(), `
+	_, err = a.Pool.Exec(r.Context(), `
 		INSERT INTO customers (id, organization_id, station_id, full_name, phone, plate, vehicle_model, notes)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		id, deref(user.OrganizationID), stationID, body.FullName, body.Phone, body.Plate, body.VehicleModel, body.Notes)
@@ -94,6 +106,45 @@ func (a *App) handleCustomerCreate(w http.ResponseWriter, r *http.Request) {
 		"vehicle_model": body.VehicleModel, "notes": body.Notes, "is_active": true,
 		"wash_count": 0, "total_spent_xof": 0, "last_visit_at": nil,
 	})
+}
+
+// GET /customers/options — liste compacte pour les formulaires (nom, téléphone,
+// plaque). Cloisonnée par entreprise, et par station pour un caissier.
+func (a *App) handleCustomerOptions(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	search := lower(r.URL.Query().Get("search"))
+	stationID, err := a.stationDeTravail(r.Context(), user, r.URL.Query().Get("station_id"))
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	rows, err := a.Pool.Query(r.Context(), `
+		SELECT id, full_name, phone, plate
+		FROM customers
+		WHERE organization_id = $1
+		  AND is_active
+		  AND ($2 = '' OR station_id = $2)
+		  AND ($3 = '' OR lower(full_name) LIKE '%' || $3 || '%'
+		            OR lower(phone) LIKE '%' || $3 || '%'
+		            OR lower(plate) LIKE '%' || $3 || '%')
+		ORDER BY full_name
+		LIMIT 200`, deref(user.OrganizationID), stationID, search)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
+		return
+	}
+	defer rows.Close()
+	options := []map[string]any{}
+	for rows.Next() {
+		var id, fullName, phone, plate string
+		if err := rows.Scan(&id, &fullName, &phone, &plate); err != nil {
+			continue
+		}
+		options = append(options, map[string]any{
+			"id": id, "full_name": fullName, "phone": phone, "plate": plate,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"options": options, "total": len(options)})
 }
 
 // lower helper pour la recherche insensible à la casse.

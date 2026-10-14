@@ -23,25 +23,29 @@ JOURNAL="$DOSSIER/journal-sauvegardes.log"
 HORODATAGE="$(date +%Y-%m-%d-%H%M)"
 FICHIER="$DOSSIER/washguard-$HORODATAGE.sql.gz"
 
-# .env pour DATABASE_URL (les variables déjà définies ne sont pas écrasées).
-if [ -f .env ]; then
-  # shellcheck disable=SC1091
-  set -a; . ./.env; set +a
-fi
+# .env pour la chaîne de connexion (les variables déjà définies gardent la main).
+# shellcheck source=charger-env.sh
+. "$ROOT/scripts/charger-env.sh"
+charger_env "$ROOT/.env"
 
 mkdir -p "$DOSSIER"
 
 noter() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" | tee -a "$JOURNAL"; }
 
-if [ -z "${DATABASE_URL:-}" ]; then
-  noter "ÉCHEC : DATABASE_URL est absent (fichier .env introuvable ?)"
+# Même résolution que le serveur : DATABASE_URL, sinon NEON_DATABASE_URL.
+# Sans ce repli, une installation configurée avec NEON_DATABASE_URL (le nom
+# employé par Neon) ne produisait aucune sauvegarde — silencieusement, chaque
+# soir, alors que l'application, elle, fonctionnait.
+CONNEXION="${DATABASE_URL:-${NEON_DATABASE_URL:-}}"
+if [ -z "$CONNEXION" ]; then
+  noter "ÉCHEC : DATABASE_URL et NEON_DATABASE_URL sont absents (fichier .env introuvable ?)"
   exit 1
 fi
 
 # --- Sauvegarde --------------------------------------------------------------
 
 if command -v pg_dump >/dev/null 2>&1; then
-  if pg_dump "$DATABASE_URL" --no-owner --clean --if-exists | gzip > "$FICHIER"; then
+  if pg_dump "$CONNEXION" --no-owner --clean --if-exists | gzip > "$FICHIER"; then
     noter "OK    sauvegarde locale : $FICHIER ($(du -h "$FICHIER" | cut -f1))"
   else
     rm -f "$FICHIER"

@@ -54,11 +54,17 @@ CAPTURES="${RECETTE_CAPTURES:-$ROOT/recette}"
 LOG="$(mktemp -t washguard-recette.XXXXXX)"
 API_PID=""
 
-source_env() { [ -f "$ROOT/.env" ] && set -a && . "$ROOT/.env" && set +a; return 0; }
-source_env
+# shellcheck source=charger-env.sh
+. "$ROOT/scripts/charger-env.sh"
+charger_env "$ROOT/.env"
+
+# Même résolution que le serveur : DATABASE_URL, sinon NEON_DATABASE_URL (le nom
+# employé par Neon, et celui du gabarit d'installation).
+DATABASE_URL="${DATABASE_URL:-${NEON_DATABASE_URL:-}}"
+export DATABASE_URL
 
 if [ -z "${DATABASE_URL:-}" ]; then
-  echo "DATABASE_URL est introuvable : copiez .env.example vers .env (cp .env.example .env)." >&2
+  echo "DATABASE_URL (ou NEON_DATABASE_URL) est introuvable : copiez .env.example vers .env." >&2
   exit 2
 fi
 

@@ -46,12 +46,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   if (!response.ok) {
-    const err = (data as { error?: { code?: string; message?: string; details?: Record<string, string> } })?.error
+    // Le serveur nomme les champs fautifs : `fields` (writeError), `details` sur
+    // d'anciennes réponses. Les deux sont acceptés pour ne rien perdre.
+    const err = (
+      data as { error?: { code?: string; message?: string; fields?: Record<string, string>; details?: Record<string, string> } }
+    )?.error
     throw new ApiError(
       response.status,
       err?.code ?? 'error',
       err?.message ?? `Erreur ${response.status}`,
-      err?.details,
+      err?.fields ?? err?.details,
     )
   }
   return data as T
@@ -61,6 +65,9 @@ export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body ?? {}),
+  // put remplace la ressource : les horaires d'une station sont enregistrés en
+  // bloc (les sept jours), un PATCH champ par champ n'aurait pas de sens ici.
+  put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body ?? {}),
   delete: <T>(path: string) => request<T>('DELETE', path),
 }
 

@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Plus, Receipt, Ban } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Select, Spinner, StatCard, Textarea } from '@/components/ui'
+import { Button, Card, ConfirmDialog, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Select, SkeletonRows, StatCard, Textarea } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
 import { api, ApiError, query } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -134,7 +134,7 @@ export default function ExpensesPage() {
 
       <Card>
         {listQuery.isLoading ? (
-          <Spinner label="Chargement des dépenses…" />
+          <SkeletonRows rows={6} />
         ) : listQuery.isError ? (
           <ErrorState message="Impossible de charger les dépenses." onRetry={() => void listQuery.refetch()} />
         ) : expenses.length === 0 ? (

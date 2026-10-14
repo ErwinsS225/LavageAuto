@@ -13,12 +13,15 @@ import LandingPage from '@/pages/LandingPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import LoginPageNew from '@/pages/LoginPageNew'
 import RegisterPageNew from '@/pages/RegisterPageNew'
+import ForgotPasswordPage from '@/pages/ForgotPasswordPage'
+import JoinPage from '@/pages/JoinPage'
 
 // Les pages internes sont chargées à la demande : l'ouverture de session reste
 // rapide, même sur une connexion mobile lente (le graphique est le plus lourd).
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 const WashOrdersPage = lazy(() => import('@/pages/WashOrdersPage'))
 const ServicesPage = lazy(() => import('@/pages/ServicesPage'))
+const TarifsPage = lazy(() => import('@/pages/TarifsPage'))
 const CustomersPage = lazy(() => import('@/pages/CustomersPage'))
 const EmployeesPage = lazy(() => import('@/pages/EmployeesPage'))
 const CashPage = lazy(() => import('@/pages/CashPage'))
@@ -28,6 +31,7 @@ const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SubscriptionPage = lazy(() => import('@/pages/SubscriptionPage'))
 const AccountPage = lazy(() => import('@/pages/AccountPage'))
+const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'))
 const WasherPortalPage = lazy(() => import('@/pages/WasherPortalPage'))
 const AdminOverviewPage = lazy(() => import('@/pages/admin/AdminOverviewPage'))
 const AdminOrganizationsPage = lazy(() => import('@/pages/admin/AdminOrganizationsPage'))
@@ -42,6 +46,14 @@ const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'))
  * - mot de passe provisoire non changé : on impose la page « Mon compte » ;
  * - permission manquante : retour au tableau de bord (le serveur refuse aussi).
  */
+/**
+ * Écrans autorisés tant que la mise en route n'est pas terminée : ceux qui
+ * permettent de la terminer, plus le compte et l'abonnement. Les autres
+ * (lavages, caisse, rapports…) échoueraient de toute façon : le serveur refuse
+ * les écritures d'exploitation d'une station non activée (requireOnboarding).
+ */
+const ECRANS_DE_MISE_EN_ROUTE = ['/onboarding', '/parametres', '/prestations', '/tarifs', '/mon-compte', '/abonnement']
+
 function RequireAuth({ permission }: { permission?: string }) {
   const { me, loading } = useAuth()
   const location = useLocation()
@@ -61,6 +73,11 @@ function RequireAuth({ permission }: { permission?: string }) {
   }
   if (me.must_change_password && location.pathname !== '/mon-compte') {
     return <Navigate to="/mon-compte" replace />
+  }
+  const etatOnboarding = me.onboarding?.state
+  const enConfiguration = etatOnboarding === 'pending' || etatOnboarding === 'in_progress'
+  if (enConfiguration && !ECRANS_DE_MISE_EN_ROUTE.some((chemin) => location.pathname.startsWith(chemin))) {
+    return <Navigate to="/onboarding" replace />
   }
   if (permission && !me.permissions.includes(permission)) {
     return <Navigate to={me.user.role === 'washer' ? '/espace-laveur' : '/tableau-de-bord'} replace />
@@ -102,6 +119,9 @@ function HomePage() {
   if (!me) return <LandingPage />
   if (me.user.role === 'superadmin') return <Navigate to="/administration" replace />
   if (me.user.role === 'washer') return <Navigate to="/espace-laveur" replace />
+  if (me.onboarding?.state === 'pending' || me.onboarding?.state === 'in_progress') {
+    return <Navigate to="/onboarding" replace />
+  }
   return <Navigate to="/tableau-de-bord" replace />
 }
 
@@ -113,10 +133,20 @@ export default function App() {
       <Route element={<AuthLayout />}>
         <Route path="/connexion" element={<LoginPageNew />} />
         <Route path="/inscription" element={<RegisterPageNew />} />
+        {/* Le lien « Mot de passe oublié ? » de la connexion pointait vers une
+            adresse qui n'existait pas : la page explique la procédure réelle. */}
+        <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
+        {/* Rejoindre une entreprise : public, car l'invité n'a pas encore de
+            compte. Le lien reçu porte le jeton (`?jeton=…`), ou l'on saisit le
+            code court dicté au téléphone. */}
+        <Route path="/rejoindre" element={<JoinPage />} />
       </Route>
 
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>
+          <Route element={<RequireAuth permission="settings:view" />}>
+            <Route path="/onboarding" element={<OnboardingPage />} />
+          </Route>
           <Route element={<RequireAuth permission="dashboard:view" />}>
             <Route path="/tableau-de-bord" element={<DashboardPage />} />
           </Route>
@@ -125,6 +155,7 @@ export default function App() {
           </Route>
           <Route element={<RequireAuth permission="service:view" />}>
             <Route path="/prestations" element={<ServicesPage />} />
+            <Route path="/tarifs" element={<TarifsPage />} />
           </Route>
           <Route element={<RequireAuth permission="customer:view" />}>
             <Route path="/clients" element={<CustomersPage />} />

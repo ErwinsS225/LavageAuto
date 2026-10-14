@@ -7,22 +7,21 @@ export interface Labeled {
 }
 
 /** Moyens de paiement enregistrés par le personnel (saisie manuelle). */
-export const PAYMENT_METHODS: Array<Labeled & { short: string }> = [
-  { id: 'especes', label: 'Espèces', short: 'Espèces' },
-  { id: 'mobile_money', label: 'Mobile Money', short: 'Mobile Money' },
-  { id: 'carte', label: 'Carte bancaire', short: 'Carte' },
-  { id: 'virement', label: 'Virement', short: 'Virement' },
-  { id: 'autre', label: 'Autre', short: 'Autre' },
-]
-
-/** Options prêtes pour le composant Select. */
-export const PAYMENT_METHOD_OPTIONS: Array<{ value: string; label: string }> = PAYMENT_METHODS.map((method) => ({ value: method.id, label: method.label }))
-
+/**
+ * Libellés des **familles** de paiement (colonne `payment_methods.family`).
+ *
+ * Ce n'est pas le référentiel des moyens : chaque station déclare les siens
+ * (« Orange Money », « Wave », « Chèque »…) dans Paramètres → Caisse et reçus,
+ * et les écrans lisent `payment_method_name`. Cette table ne sert que de repli
+ * pour afficher un encaissement ancien, enregistré avant l'introduction du
+ * référentiel, ou pour nommer la famille sous un moyen.
+ */
 const methodLabels: Record<string, string> = {
   especes: 'Espèces',
   mobile_money: 'Mobile Money',
   carte: 'Carte bancaire',
   virement: 'Virement',
+  differe: 'Paiement différé',
   autre: 'Autre',
 }
 

@@ -16,7 +16,8 @@ type App struct {
 var rolePermissions = map[string][]string{
 	"superadmin": {
 		"dashboard:view", "station:view", "wash:view", "wash:create", "wash:update", "wash:cancel", "wash:assign",
-		"payment:view", "payment:create", "payment:void", "service:view", "service:manage",
+		"payment:view", "payment:create", "payment:void", "payment:create_deferred",
+		"service:view", "service:manage",
 		"customer:view", "customer:create", "customer:manage", "employee:view", "employee:manage",
 		"cash:view", "cash:open", "cash:close", "cash:reopen", "expense:view", "expense:create",
 		"expense:void", "report:view", "report:export", "commission:view", "commission:manage", "settings:view",
@@ -25,7 +26,8 @@ var rolePermissions = map[string][]string{
 	},
 	"owner": {
 		"dashboard:view", "station:view", "wash:view", "wash:create", "wash:update", "wash:cancel", "wash:assign",
-		"payment:view", "payment:create", "payment:void", "service:view", "service:manage",
+		"payment:view", "payment:create", "payment:void", "payment:create_deferred",
+		"service:view", "service:manage",
 		"customer:view", "customer:create", "customer:manage", "employee:view", "employee:manage",
 		"cash:view", "cash:open", "cash:close", "cash:reopen", "expense:view", "expense:create",
 		"expense:void", "report:view", "report:export", "commission:view", "commission:manage", "settings:view",
@@ -34,7 +36,8 @@ var rolePermissions = map[string][]string{
 	},
 	"manager": {
 		"dashboard:view", "station:view", "wash:view", "wash:create", "wash:update", "wash:cancel", "wash:assign",
-		"payment:view", "payment:create", "payment:void", "service:view", "service:manage",
+		"payment:view", "payment:create", "payment:void", "payment:create_deferred",
+		"service:view", "service:manage",
 		"customer:view", "customer:create", "customer:manage", "employee:view", "employee:manage",
 		"cash:view", "cash:open", "cash:close", "cash:reopen", "expense:view", "expense:create",
 		"expense:void", "expense:approve", "report:view", "report:export", "commission:view", "commission:manage",
@@ -43,27 +46,11 @@ var rolePermissions = map[string][]string{
 	"cashier": {
 		"dashboard:view", "station:view", "wash:view", "wash:create", "wash:update",
 		"payment:view", "payment:create", "service:view", "customer:view", "customer:create",
-		"cash:view", "cash:open", "cash:close", "expense:create", "washer:view",
+		"cash:view", "cash:open", "cash:close", "expense:view", "expense:create", "washer:view",
 	},
 	"washer": {
 		"washer:view", "washer:update_status", "washer:report_incident", "washer:personal_stats",
 	},
-}
-
-// roleLabelFR libellé français d'un rôle (payload /auth/me).
-func roleLabelFR(role string) string {
-	switch role {
-	case "owner":
-		return "Propriétaire"
-	case "manager":
-		return "Gérant"
-	case "cashier":
-		return "Caissier"
-	case "washer":
-		return "Laveur"
-	default:
-		return "Administrateur"
-	}
 }
 
 // isStaffRestringed signale un rôle qui ne peut pas gérer le catalogue/employés.

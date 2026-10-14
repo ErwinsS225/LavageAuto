@@ -22,10 +22,9 @@ if [ ! -x "$ROOT/washguard-api" ]; then
 fi
 
 # Variables du .env : DATABASE_URL, STATIC_DIR, PLATFORM_ADMIN_*...
-set -a
-# shellcheck disable=SC1091
-. "$ROOT/.env"
-set +a
+# shellcheck source=charger-env.sh
+. "$ROOT/scripts/charger-env.sh"
+charger_env "$ROOT/.env"
 
 # STATIC_DIR est relatif au dossier backend/ : c'est depuis ce dossier que l'API
 # doit être lancée (même convention que `make api` et l'unité systemd documentée).

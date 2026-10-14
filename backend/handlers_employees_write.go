@@ -2,20 +2,30 @@ package main
 
 import (
 	"net/http"
+	"net/mail"
 	"strings"
 )
 
 // ---------------------------------------------------------------------------
-// Employés (création).
+// Employés : création d'un compte.
 // ---------------------------------------------------------------------------
+
+// tableauRoles : rôles qu'un créateur est autorisé à attribuer.
+// Le rôle « superadmin » (support WashGuard) ne s'attribue jamais par l'API
+// d'une entreprise : il ne peut venir que du seed de la plateforme.
+func roleAutorise(pourRole, role string) bool {
+	switch role {
+	case "owner":
+		return pourRole == "owner"
+	case "manager", "cashier", "washer":
+		return pourRole == "owner" || pourRole == "manager"
+	default:
+		return false
+	}
+}
 
 func (a *App) handleEmployeeCreate(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
-	if isRestrictedRole(user.Role) {
-		writeError(w, http.StatusForbidden, "forbidden",
-			"Seul le gérant ou le propriétaire est autorisé à ajouter des employés.", nil)
-		return
-	}
 	var body struct {
 		StationID            string   `json:"station_id"`
 		FullName             string   `json:"full_name"`
@@ -31,18 +41,33 @@ func (a *App) handleEmployeeCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation_error", "Nom et e-mail obligatoires.", nil)
 		return
 	}
+	if _, err := mail.ParseAddress(body.Email); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", "Adresse e-mail invalide.",
+			map[string]string{"email": "Format d'e-mail invalide"})
+		return
+	}
 	role := body.Role
 	if role == "" {
 		role = "cashier"
 	}
-	if user.Role == "manager" && (role == "owner" || role == "superadmin") {
+	if !roleAutorise(user.Role, role) {
 		writeError(w, http.StatusForbidden, "forbidden",
-			"Un gérant ne peut créer que des comptes Gérant, Caissier ou Laveur.", nil)
+			"Ce rôle ne peut pas être attribué par votre profil.", nil)
 		return
 	}
-	stationID := body.StationID
-	if stationID == "" {
-		stationID = deref(user.StationID)
+	if body.Password != "" && len(body.Password) < minPasswordLength {
+		writeAPIError(w, passwordTooShort("password"))
+		return
+	}
+	if err := a.checkPlanLimit(r, user, limitEmployees); err != nil {
+		writeAPIError(w, err)
+		return
+	}
+
+	stationID, err := a.resolveStation(r.Context(), user, body.StationID)
+	if err != nil {
+		writeAPIError(w, err)
+		return
 	}
 
 	plain := body.Password
@@ -67,12 +92,12 @@ func (a *App) handleEmployeeCreate(w http.ResponseWriter, r *http.Request) {
 		strings.ToLower(body.Email), body.Phone, hash, role, generated,
 		body.CommissionMode, body.CommissionPerWashXOF, body.CommissionPercent)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", "E-mail déjà utilisé ou erreur interne.", nil)
+		writeError(w, http.StatusConflict, "conflict", "Cet e-mail est déjà utilisé par un compte.", nil)
 		return
 	}
 	a.addAudit(r.Context(), deref(user.OrganizationID), stationID, user.FullName,
 		"employee.created", "employee", id,
-		map[string]any{"full_name": body.FullName, "email": body.Email, "role": role, "actor_role": user.Role})
+		map[string]any{"full_name": body.FullName, "email": strings.ToLower(body.Email), "role": role, "actor_role": user.Role})
 
 	resp := map[string]any{
 		"id": id, "message": "Employé créé.", "email": strings.ToLower(body.Email),
@@ -83,4 +108,3 @@ func (a *App) handleEmployeeCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusCreated, resp)
 }
-

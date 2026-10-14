@@ -27,6 +27,8 @@ export interface EmployeeOption {
   id: string;
   full_name: string;
   role: Role;
+  /** Libellé lisible du rôle (« Caissier », « Laveur »…), fourni par le serveur. */
+  role_label: string;
 }
 
 export function useEmployeeOptions(filters: { station_id?: string } = {}) {
@@ -113,17 +115,13 @@ export interface EmployeeUpdateInput extends Partial<EmployeeInput> {
 }
 
 export function useUpdateEmployee() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: EmployeeUpdateInput) =>
       api.patch<Employee>("/employees/" + id, input),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ["employees"] }),
   });
 }
 
 export function useResetEmployeePassword() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       api.post<EmployeeCreated>(`/employees/${id}/reset-password`),

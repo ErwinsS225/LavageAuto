@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { HandCoins } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 
-import { Button, Card, CardHeader, ErrorState, Field, Input, PageHeader, Spinner, StatCard, Table } from '@/components/ui'
+import { Button, Card, CardHeader, ErrorState, Field, Input, PageHeader, SkeletonRows, StatCard, Table } from '@/components/ui'
 import { api, query } from '@/lib/api'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useStation } from '@/hooks/useStation'
@@ -52,7 +52,7 @@ export default function CommissionsPage() {
       </Card>
 
       {report.isLoading ? (
-        <Spinner label="Calcul des commissions…" />
+        <SkeletonRows rows={6} />
       ) : report.isError ? (
         <ErrorState message="Impossible de calculer les commissions." onRetry={() => void report.refetch()} />
       ) : data ? (

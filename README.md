@@ -20,8 +20,6 @@ La racine du site (`/`) présente WashGuard aux visiteurs : à quoi sert l'appli
 écrans, formules et tarifs (lus depuis la base, donc jamais désynchronisés de la facturation),
 questions fréquentes. Une personne déjà identifiée est conduite directement à son espace.
 
-![Page de présentation WashGuard](docs/captures/vitrine.png)
-
 Ce qui alimente la vitrine est réel : les captures d'écran viennent du rendu de l'application
 (`make rendu`), les tarifs de la base, et il n'y a **pas de témoignages** — des avis inventés
 seraient pires que pas d'avis du tout. Ils seront ajoutés quand de vraies stations en donneront.
@@ -30,7 +28,7 @@ seraient pires que pas d'avis du tout. Ils seront ajoutés quand de vraies stati
 
 Ces deux écrans suivent la même mise en page (`AuthLayout`) : le formulaire sur une surface
 claire et centrée, un panneau à droite occupé par une photo de lavage en cours
-(`frontend/public/images/lavage-mousse.jpg`). Un dégradé sombre est posé sur la photo : le badge
+(`public/images/lav-auto.jpeg`). Un dégradé sombre est posé sur la photo : le badge
 « Espace station », la phrase d'accroche et les trois repères restent lisibles, y compris sur une
 photo très claire. Sur téléphone, le panneau disparaît : seul le formulaire reste, plein largeur.
 
@@ -44,7 +42,7 @@ propriétaire* — pour rester lisible malgré ses sept champs. Les deux écrans
 `make smoke` (34 pages vérifiées), qui compte aussi les appels à `/auth/me` : un visiteur sans
 session doit en déclencher un seul. Ce garde-fou vient d'un défaut réel — le 401 de `/auth/me`
 invalidait tout le cache, ce qui relançait `/auth/me`, et ainsi de suite (2 300 requêtes en cinq
-secondes mesurées dans un vrai navigateur). Le parcours complet « inscription → tableau de bord →
+secondes mesurées dans un vrai navigateur). Le parcours complet « inscription → mise en route →
 connexion » est rejoué dans un vrai navigateur par les outils de `tools/rendu/`.
 
 Trois choses ne figurent **pas** sur ces pages, faute de les tenir :
@@ -55,6 +53,7 @@ Trois choses ne figurent **pas** sur ces pages, faute de les tenir :
 
 | Module | Ce qu'il permet |
 | --- | --- |
+| **Mise en route** | Parcours d'ouverture : l'entreprise, la station, les prestations et leurs prix, puis l'activation. Chaque étape est constatée par le serveur sur vos données — aucun bouton ne déclare une étape « faite ». Tant que la station n'est pas activée, l'application refuse les fiches, les encaissements, la caisse et les dépenses (409 `onboarding_incomplete`) : elle n'ouvre pas l'exploitation avec des tarifs que vous n'avez pas choisis. |
 | **Tableau de bord** | Chiffre d'affaires du jour, lavages, encaissements, dépenses, état de la caisse, alertes, dernières opérations. Tous les chiffres sont calculés par le serveur à partir de la base. |
 | **Lavages** | Saisie rapide d'une fiche : prestations, véhicule, plaque (facultative), employé, remise autorisée, client (facultatif). Statuts *en attente / en cours / terminé / annulé*, encaissement total ou partiel, reste à payer. |
 | **Prestations** | Catalogue propre à chaque station (lavage extérieur, intérieur, complet, sièges, moteur…). **Modifier un tarif ne change jamais les lavages déjà enregistrés.** |
@@ -165,7 +164,8 @@ Ouvrez **<http://localhost:5173>** et connectez-vous :
 ```bash
 make help      # liste toutes les commandes
 make check     # compilation Go + TypeScript + build du frontend
-make test      # tests d'intégration du backend (base réelle)
+make test      # tests unitaires Go + types du front
+make test-e2e  # tests de bout en bout sur une base jetable (make db)
 make smoke     # rendu réel des pages React (API démarrée)
 make backup    # sauvegarde de la base dans backups/
 make db-stop   # arrêter PostgreSQL (les données sont conservées)
@@ -179,22 +179,24 @@ make db-reset  # repartir d'une base vide (destructif)
 ```
 .
 ├── backend/                    API Go (aucun Node.js dans le serveur)
-│   ├── cmd/api/                point d'entrée : migrations, seed, serveur HTTP
-│   └── internal/
-│       ├── auth/               inscription, connexion, sessions, mots de passe
-│       ├── organizations/      entreprise, abonnement (côté client)
-│       ├── stations/ services/ customers/ employees/
-│       ├── washorders/         fiches de lavage et paiements associés
-│       ├── cash/ payments/     sessions de caisse, encaissements
-│       ├── expenses/ reports/  dépenses, indicateurs et export CSV
-│       ├── commissions/        paie des laveurs et objectif du mois
-│       ├── platform/           espace support WashGuard
-│       ├── audit/ permissions/ tenancy (isolation), validation…
-│       └── migrator/sql/       migrations versionnées (0001…0008)
-├── frontend/                   React + TypeScript + Vite + Tailwind
-│   └── src/{components,layouts,pages,features,hooks,lib,types}
-├── docs/                       sauvegarde, déploiement, API
-├── compose.yaml                PostgreSQL 16 pour le développement
+│   ├── main.go                 point d'entrée : configuration, routes, serveur HTTP
+│   ├── migrations.go           moteur de migrations (table `schema_migrations`)
+│   ├── migrations/             migrations numérotées (0001_schema_initial.sql, 0002_…, 0003_…)
+│   ├── handlers_*.go           un fichier par domaine : lavages, caisse, employés,
+│   │                           clients, prestations, dépenses, rapports, plateforme…
+│   ├── permissions.go          rôles, permissions et périmètre de station
+│   ├── stores / models         requêtes SQL explicites (pgx), types partagés
+│   └── *_test.go               tests Go : 5 sur les jetons Clerk, 14 de bout en bout
+├── src/                        React + TypeScript + Vite + Tailwind CSS 4
+│   ├── components/             ui/ (design system), auth/, Toaster, Brand, charts
+│   ├── layouts/                AppLayout (application), AdminLayout (plateforme), AuthLayout
+│   ├── pages/                  un fichier par écran
+│   ├── features/               appels API par domaine (React Query)
+│   ├── hooks/ lib/ types/      session, station, thème, formatage, types d'API
+│   └── index.css               tokens du thème, classes d'interface, animations
+├── docs/                       guide d'utilisation, exploitation, API, interface
+├── scripts/verifications/      sondes d'acceptation, rendu des écrans, cohérence
+├── compose.yaml                PostgreSQL 17 pour le développement (make db)
 ├── Makefile                    commandes de développement
 └── .env.example                modèle de configuration
 ```
@@ -205,13 +207,13 @@ make db-reset  # repartir d'une base vide (destructif)
   (pilote PostgreSQL) et **SQL explicite** — pas d'ORM, pas de requêtes générées à l'exécution.
 - **PostgreSQL 16**, schéma versionné par migrations (table `schema_migrations`).
 - **React 19 + TypeScript strict + Vite + Tailwind CSS 4 + React Router + TanStack Query**,
-  graphiques [Recharts](https://recharts.org).
-- **Composants d'interface écrits à la main** (`components/ui.tsx` et les classes de
-  `styles.css`) : ni shadcn/ui, ni bibliothèque de composants. Les motifs dont l'application a
-  besoin — carte chiffrée avec écart et comparaison, carte dépliable, jauge avec valeur lisible,
-  avatar d'initiales, carte « prochaine étape » — y sont portés directement, avec les jetons de
-  couleur du thème clair/sombre. Moins de dépendances à suivre, et rien n'attend une image ou une
-  police venue d'Internet.
+  graphiques [Recharts](https://recharts.org), animations [Framer Motion](https://motion.dev).
+- **Design system maison** : `src/components/ui/` (primitives, surfaces, données, formulaires,
+  surépaisseurs, états, blocs animés) et les classes sémantiques de `src/index.css`
+  (`card`, `badge`, `table`, `nav-link`, `stat-value`…). Ni shadcn/ui, ni bibliothèque de
+  composants : les jetons de couleur, les ombres en couches et les durées d'animation sont
+  définis une fois, puis réutilisés par tous les écrans. Repères de conception :
+  [docs/interface.md](docs/interface.md).
 - Aucune dépendance payante : le projet tourne entièrement avec des outils libres.
 
 ### Isolation des entreprises
@@ -229,7 +231,8 @@ encaissements. Le propriétaire, lui, garde l'entreprise entière : c'est néces
 une seconde station.
 
 Les tests `TestIsolationEntreEntreprises`, `TestPermissionsParRole` et `TestPerimetreDuneStation`
-le vérifient de bout en bout ; `make verifier-acces` le vérifie sur l'application qui tourne.
+le vérifient de bout en bout (`make test-e2e`) ; `make verifier-acces` le vérifie sur
+l'application qui tourne.
 Détail des règles et de leurs limites : [docs/securite-acces.md](docs/securite-acces.md).
 
 ---
@@ -259,22 +262,27 @@ verrouillée ; sa réouverture exige un motif et laisse une trace.
 ## 5. Tests et vérifications
 
 ```bash
-# API : 13 tests de bout en bout sur une vraie base PostgreSQL
-make test
+# API : 19 tests Go (14 de bout en bout sur une vraie base PostgreSQL,
+# 5 sur la vérification des jetons Clerk), base jetable : chaque test crée son
+# propre schéma, le supprime à la fin et ne touche à rien d'autre
+make test-e2e
 
-# Compilation Go, vérification TypeScript et build du frontend
+# Formatage, compilation Go, types et build du frontend, routes, écrans,
+# classes d'interface et cohérence de la configuration
 make check
 
-# Interface : les 13 pages internes sont réellement rendues (jsdom) sur l'API en marche
+# Interface : les 11 écrans internes sont réellement rendus (jsdom) sur l'API en marche
 make api          # dans un terminal
 make smoke        # dans un autre
 ```
 
 Les tests couvrent : création d'entreprise et de station, connexion, enregistrement d'un
-lavage, encaissement, dépense, ouverture/clôture de caisse, calculs des rapports, commissions
-des laveurs (barème de la station, exception sur un compte, lavages en attente et annulés
-exclus, confidentialité), permissions par rôle, isolation entre deux entreprises, migrations et
-validation des entrées.
+lavage, encaissement, dépense, ouverture/clôture de caisse (écart de comptage compris),
+calculs des rapports, commissions des laveurs (barème de la station, exception sur un compte,
+lavages en attente et annulés exclus, confidentialité), permissions par rôle, périmètre de
+station, isolation entre deux entreprises, migrations (rejeu sans effet, réglages conservés) et
+validation des entrées. Sans `DATABASE_URL`, ces tests sont ignorés : `go test ./...` reste
+vert sur une machine sans PostgreSQL.
 
 `make smoke` ouvre une session réelle avec un compte de démonstration, monte chaque page de
 l'application dans un DOM simulé et vérifie qu'elle affiche ses données (tableau de bord,
@@ -383,8 +391,7 @@ CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
 > Le script crée deux vrais lavages dans la station : à lancer sur une base de démonstration, pas
 > sur les données réelles de la station.
 
-Aperçu des écrans : [`docs/apercu-ecrans.png`](docs/apercu-ecrans.png). Guide du personnel :
-[`docs/guide-utilisation.md`](docs/guide-utilisation.md).
+Guide du personnel : [`docs/guide-utilisation.md`](docs/guide-utilisation.md).
 
 ### Vérifier le comportement en production
 
@@ -403,15 +410,14 @@ automatiquement : **vos données de développement ne sont ni lues ni modifiées
 compilée (`make build`) et que PostgreSQL est démarré (`make db`).
 
 Pour aller plus loin et dérouler le parcours complet en HTTPS sur votre machine (cookies sécurisés,
-redirection HTTP → HTTPS, exports), voir la « Répétition générale » dans
-[`docs/deploiement-https.md`](docs/deploiement-https.md) : elle a été exécutée et ses résultats
-mesurés y sont consignés.
+proxy inverse, en-têtes transmis), voir « Vérifier la mise en service » dans
+[`docs/deploiement-https.md`](docs/deploiement-https.md).
 
 Pour vérifier que les migrations fonctionnent **depuis une base vide** :
 
 ```bash
 make db-reset   # supprime la base puis la recrée
-make migrate    # applique les migrations seules (0001 → 0005)
+make migrate    # applique les migrations seules (0001 → 0003)
 ```
 
 ---
@@ -427,12 +433,12 @@ make migrate    # applique les migrations seules (0001 → 0005)
 Résumé production :
 
 ```bash
-make build                      # compile le frontend dans frontend/dist
-cd backend && go build -o washguard-api ./cmd/api
+make build                      # interface dans dist/ et binaire washguard-api à la racine
 APP_ENV=production \
 DATABASE_URL=postgresql://… \
 SESSION_COOKIE_SECURE=true \
 PLATFORM_ADMIN_EMAIL=… PLATFORM_ADMIN_PASSWORD=… \
+STATIC_DIR=dist \
 ./washguard-api                 # migre puis sert l'API et l'interface sur le même port
 ```
 

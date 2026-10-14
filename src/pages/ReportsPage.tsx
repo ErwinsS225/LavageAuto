@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { Download, BarChart3 } from 'lucide-react'
 
-import { Button, Card, CardHeader, ErrorState, Field, Input, PageHeader, Spinner, StatCard, Table } from '@/components/ui'
+import { Button, Card, CardHeader, ErrorState, Field, Input, PageHeader, SkeletonRows, StatCard, Table } from '@/components/ui'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useStation } from '@/hooks/useStation'
 import { useReportOverview, reportExportUrl } from '@/features/reports/api'
@@ -54,7 +54,7 @@ export default function ReportsPage() {
       </Card>
 
       {overview.isLoading ? (
-        <Spinner label="Calcul des rapports…" />
+        <SkeletonRows rows={6} />
       ) : overview.isError ? (
         <ErrorState message="Impossible de calculer les rapports." onRetry={() => void overview.refetch()} />
       ) : overview.data ? (

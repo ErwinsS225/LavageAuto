@@ -30,19 +30,22 @@ func methodLabel(m string) string {
 	return "Mobile Money"
 }
 
-// stationOrDefault renvoie la station demandée ou celle de l'utilisateur.
-func stationOrDefault(r *http.Request, fallback string) string {
-	if v := r.URL.Query().Get("station_id"); v != "" {
-		return v
-	}
-	return fallback
-}
+// stationOrDefault est remplacé par App.stationDeTravail : la station demandée
+// doit appartenir à l'entreprise, sinon la requête est refusée.
 
 // GET /cash/current — session ouverte + mouvements de la journée.
 func (a *App) handleCashCurrent(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
 	ctx := r.Context()
-	stationID := stationOrDefault(r, deref(user.StationID))
+	stationID, err := a.stationDeTravail(ctx, user, r.URL.Query().Get("station_id"))
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	if stationID == "" {
+		writeError(w, http.StatusBadRequest, "validation_error", "Aucune station rattachée à votre compte.", nil)
+		return
+	}
 
 	var open map[string]any
 	row := a.Pool.QueryRow(ctx, `
@@ -69,7 +72,8 @@ func (a *App) handleCashCurrent(w http.ResponseWriter, r *http.Request) {
 
 		pRows, err := a.Pool.Query(ctx, `
 			SELECT id, wash_order_id, amount_xof, method, paid_at, received_by_name, status, reference
-			FROM payments WHERE cash_session_id = $1 ORDER BY paid_at DESC`, sessionID)
+			FROM payments WHERE cash_session_id = $1 AND status = 'valid'
+			ORDER BY paid_at DESC`, sessionID)
 		if err == nil {
 			for pRows.Next() {
 				var id, m, actor, status, ref string
@@ -84,7 +88,7 @@ func (a *App) handleCashCurrent(w http.ResponseWriter, r *http.Request) {
 				movements = append(movements, map[string]any{
 					"kind": "payment", "id": id, "label": label,
 					"amount_xof": amount, "method": m, "method_label": methodLabel(m),
-					"at": at.Format(time.RFC3339), "actor": actor,
+					"at": at.Format(timeLayout), "actor": actor,
 					"status": status, "reference": ref,
 				})
 			}
@@ -103,7 +107,7 @@ func (a *App) handleCashCurrent(w http.ResponseWriter, r *http.Request) {
 				movements = append(movements, map[string]any{
 					"kind": "expense", "id": id, "label": label,
 					"amount_xof": amount, "method": m, "method_label": methodLabel(m),
-					"at": at.Format(time.RFC3339), "actor": actor,
+					"at": at.Format(timeLayout), "actor": actor,
 					"status": status, "reference": ref,
 				})
 			}
@@ -111,9 +115,12 @@ func (a *App) handleCashCurrent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Le front lit `open` (booléen) : `is_open` reste exposé pour compatibilité.
 	writeJSON(w, http.StatusOK, map[string]any{
+		"open":         open != nil,
 		"is_open":      open != nil,
 		"session":      open,
+		"last":         last,
 		"last_session": last,
 		"movements":    movements,
 	})
@@ -122,11 +129,16 @@ func (a *App) handleCashCurrent(w http.ResponseWriter, r *http.Request) {
 // GET /cash/sessions — historique des sessions d'une station.
 func (a *App) handleCashSessionsList(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
-	stationID := stationOrDefault(r, deref(user.StationID))
+	stationID, err := a.stationDeTravail(r.Context(), user, r.URL.Query().Get("station_id"))
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
 
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT `+cashSessionColumns+` FROM cash_sessions
-		WHERE station_id = $1 ORDER BY opened_at DESC LIMIT 100`, stationID)
+		WHERE organization_id = $2 AND ($1 = '' OR station_id = $1)
+		ORDER BY opened_at DESC LIMIT 100`, stationID, deref(user.OrganizationID))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
 		return
@@ -150,14 +162,8 @@ func (a *App) handleCashSessionDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 
-	row := a.Pool.QueryRow(ctx, `
-		SELECT `+cashSessionColumns+` FROM cash_sessions WHERE id = $1`, id)
-	session, orgID, err := scanCashSessionWithOrg(row)
+	session, err := a.userCashSession(ctx, user, id)
 	if err != nil || session == nil {
-		writeError(w, http.StatusNotFound, "not_found", "Session introuvable.", nil)
-		return
-	}
-	if orgID != deref(user.OrganizationID) {
 		writeError(w, http.StatusNotFound, "not_found", "Session introuvable.", nil)
 		return
 	}

@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0d12" />
     <!-- Identité dans l'onglet, les favoris et l'écran d'accueil d'un téléphone. -->
+    <!-- Favicon : le seul fichier livré est le SVG (voir public/favicon.svg).
+         Les anciennes balises pointaient vers des PNG qui n'existaient pas et
+         provoquaient une requête en erreur dans chaque onglet. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta
       name="description"
       content="WashGuard — gestion des lavages, de la caisse et des recettes d'une station de lavage automobile à Abidjan."

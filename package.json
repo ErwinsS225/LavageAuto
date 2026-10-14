@@ -8,13 +8,14 @@
     "dev:web": "vite",
     "build": "tsc -b && vite build",
     "start": "bash scripts/start.sh",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.10",
     "@tanstack/react-query": "^5.104.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "framer-motion": "^12.43.0",
     "lucide-react": "^1.55.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

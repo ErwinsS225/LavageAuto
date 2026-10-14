@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
 	"strings"
@@ -30,6 +31,13 @@ func newToken() string {
 	buf := make([]byte, 32)
 	_, _ = rand.Read(buf)
 	return hex.EncodeToString(buf)
+}
+
+// hashToken : la base ne conserve que l'empreinte SHA-256 du jeton. Une copie
+// de la table sessions ne permet donc pas de rejouer une session.
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 // newIDfabrique un identifiant texte préfixé, comme le faisait `x-${Date.now()}`.
@@ -68,7 +76,7 @@ func (a *App) userFromRequest(r *http.Request) (*User, error) {
 	ctx := r.Context()
 	var userID string
 	err := a.Pool.QueryRow(ctx,
-		`SELECT user_id FROM sessions WHERE token = $1 AND expires_at > now()`, token,
+		`SELECT user_id FROM sessions WHERE token = $1 AND expires_at > now()`, hashToken(token),
 	).Scan(&userID)
 	if err != nil {
 		// Pas une session locale : si un JWT Clerk est fourni, on l'accepte.
@@ -86,7 +94,32 @@ func (a *App) userFromRequest(r *http.Request) (*User, error) {
 	if err != nil || user == nil || !user.IsActive {
 		return nil, errUnauthorized
 	}
+	if err := a.organizationAllowed(ctx, user); err != nil {
+		return nil, err
+	}
 	return user, nil
+}
+
+// organizationAllowed refuse l'accès quand l'entreprise est suspendue ou
+// archivée : la vitrine l'annonce, le serveur doit l'appliquer.
+func (a *App) organizationAllowed(ctx context.Context, user *User) error {
+	if user.OrganizationID == nil {
+		// Compte plateforme (superadmin) : pas d'entreprise.
+		return nil
+	}
+	var status string
+	if err := a.Pool.QueryRow(ctx,
+		`SELECT status FROM organizations WHERE id = $1`, *user.OrganizationID).Scan(&status); err != nil {
+		return nil
+	}
+	if status != "active" {
+		return &apiError{
+			Status:  http.StatusForbidden,
+			Code:    "organization_suspended",
+			Message: "L'accès de votre entreprise est suspendu. Contactez le support WashGuard.",
+		}
+	}
+	return nil
 }
 
 type contextKey string
@@ -110,7 +143,7 @@ func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, err := a.userFromRequest(r)
 		if err != nil {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "Vous devez vous connecter.", nil)
+			writeAPIError(w, err)
 			return
 		}
 		ctx := context.WithValue(r.Context(), userContextKey, user)
@@ -127,8 +160,12 @@ func currentUser(r *http.Request) *User {
 // setSessionCookie pose le cookie de session (HttpOnly, Secure en HTTPS).
 func (a *App) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	secure := a.Cfg.SessionCookieSecure || r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	// SameSite=Lax par défaut : le navigateur n'envoie plus le cookie sur une
+	// requête POST venue d'un autre site (protection CSRF de base). SameSite
+	// = None n'est utilisé que si l'exploitant le demande explicitement, pour
+	// un front servi sur un autre domaine.
 	sameSite := http.SameSiteLaxMode
-	if secure {
+	if a.Cfg.SessionCookieSameSite == "none" && secure {
 		sameSite = http.SameSiteNoneMode
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -146,8 +183,14 @@ func (a *App) setSessionCookie(w http.ResponseWriter, r *http.Request, token str
 func (a *App) createSession(ctx context.Context, token, userID string) error {
 	_, err := a.Pool.Exec(ctx,
 		`INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, now() + make_interval(hours => $3))`,
-		token, userID, a.Cfg.SessionTTLHours)
+		hashToken(token), userID, a.Cfg.SessionTTLHours)
 	return err
+}
+
+// purgeExpiredSessions supprime les sessions expirées (appelé au démarrage
+// puis périodiquement : la table ne grossit plus sans fin).
+func (a *App) purgeExpiredSessions(ctx context.Context) {
+	_, _ = a.Pool.Exec(ctx, `DELETE FROM sessions WHERE expires_at < now()`)
 }
 
 // getUserByID charge un utilisateur par identifiant.

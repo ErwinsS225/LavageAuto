@@ -98,8 +98,8 @@ func (a *App) handleClerkWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload map[string]any
 	if err := wh.Verify(body, headers); err != nil {
-		log.Printf("webhook clerk : verify échec : %v (headers reçus : id=%q ts=%q sig=%q)",
-			err, r.Header.Get("svix-id"), r.Header.Get("svix-timestamp"), r.Header.Get("svix-signature"))
+		// Aucun détail d'en-tête n'est journalisé : la signature est un secret.
+		log.Printf("webhook clerk : signature refusée (id=%q)", r.Header.Get("svix-id"))
 		writeError(w, http.StatusUnauthorized, "unauthorized", "Signature webhook invalide.", nil)
 		return
 	}
