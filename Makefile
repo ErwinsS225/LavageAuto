@@ -195,12 +195,20 @@ backup: ## Sauvegarde la base (pg_dump) dans backups/
 # ---------------------------------------------------------------------------
 # Parcours dans un vrai navigateur (nécessite Chromium + puppeteer-core)
 # ---------------------------------------------------------------------------
-rendu: ## Parcours guidés dans un navigateur réel (voir frontend/tools/rendu)
+# ATTENTION : ces deux cibles rejouent des scénarios écrits AVANT la mise en
+# route (lots 5 à 8) : ils attendent un catalogue pré-tarifé et enregistrent un
+# lavage juste après l'inscription, ce que le produit ne permet plus (aucun prix
+# inventé ; 409 onboarding_incomplete tant que la station n'est pas activée).
+# Ils échouent donc, et le disent en s'arrêtant sur le premier contrôle rouge.
+# La campagne qui fait foi : `make verifier-acces` (voir docs/onboarding.md §10).
+rendu: ## Parcours guidés dans un navigateur réel — scénarios antérieurs au parcours de mise en route
 	@$(MAKE) --no-print-directory verifier-navigateur
+	@echo "⚠️  Scénario antérieur aux lots 5 à 8 (catalogue pré-tarifé) : il échouera. Voir docs/onboarding.md."
 	@node $(ROOT)/frontend/tools/rendu/jour-1-station.mjs
 
-recette: ## Recette complète du jour 1 sur une base neuve
-	@echo "La recette crée sa propre base et rejoue un parcours réel."
+recette: ## Recette du jour 1 sur une base neuve — scénarios antérieurs au parcours de mise en route
+	@echo "⚠️  Cette recette précède le parcours de mise en route : catalogue pré-tarifé, lavage"
+	@echo "    immédiat. Elle échoue depuis les lots 5 à 8 ; la campagne à jour est docs/onboarding.md §10."
 	@bash $(ROOT)/scripts/recette-jour1.sh
 
 verifier-navigateur:

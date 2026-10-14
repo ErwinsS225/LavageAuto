@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# ⚠️  OBSOLÈTE depuis les lots 5 à 8 — ne pas lancer tel quel.
+#     Cette recette décrit le produit d'avant la mise en route : elle attend un
+#     « catalogue d'Abidjan déjà tarifé » et enregistre un lavage juste après
+#     l'inscription. Or le catalogue arrive désormais **sans prix** (aucun tarif
+#     n'est inventé) et une station non activée refuse toute écriture de métier
+#     (409 onboarding_incomplete) : le scénario échoue à l'étape 3.
+#     La recette à jour est le parcours d'acceptation en lignes de commande
+#     (voir docs/onboarding.md §10) ; les scénarios de frontend/tools/rendu/
+#     restent à réécrire pour les treize étapes.
 #
 # Recette de première utilisation : rejoue le « jour 1 » d'une station neuve.
 #

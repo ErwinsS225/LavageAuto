@@ -41,7 +41,12 @@ const FEATURES = [
 ]
 
 const ETAPES = [
-  { titre: 'Créez votre espace', texte: 'Inscription en deux minutes : entreprise, station et catalogue d’Abidjan déjà tarifé.' },
+  // Ce qui est annoncé ici doit être ce que le produit fait : le catalogue
+  // arrive **sans prix** (aucun tarif n'est inventé) et la station n'ouvre
+  // qu'après la mise en route. Une promesse plus flatteuse serait un mensonge
+  // que la première minute d'utilisation démentirait.
+  { titre: 'Créez votre espace', texte: 'Inscription en deux minutes : votre entreprise, votre station et un catalogue de 18 prestations à tarifer à vos prix.' },
+  { titre: 'Mettez en route', texte: 'Horaires, catégories de véhicules, grille tarifaire : treize étapes constatées par le serveur, puis l’activation de la station.' },
   { titre: 'Encaissez au guichet', texte: 'Fiche de lavage, encaissement espèces ou mobile money, caisse ouverte et suivie.' },
   { titre: 'Pilotez vos chiffres', texte: 'Rapports du jour, commissions des laveurs et objectif mensuel, sans tableur.' },
 ]
@@ -220,9 +225,9 @@ export default function LandingPage() {
           <Reveal>
             <div className="card overflow-hidden p-6 sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-subtle">
-                Trois étapes, une journée
+                Quatre étapes, une journée
               </p>
-              <div className="mt-5 grid gap-6 sm:grid-cols-3">
+              <div className="mt-5 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 {ETAPES.map((etape, index) => (
                   <motion.div
                     key={etape.titre}

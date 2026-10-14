@@ -1484,6 +1484,11 @@ func (b *banc) creerEmploye(patron *client, station, role string) *client {
 		b.t.Fatalf("connexion de l'employé %s : http=%d %v", role, code, connexion)
 	}
 	autre.me = connexion
+	// Le compte créé garde son adresse et son mot de passe provisoire : un test
+	// qui doit retrouver cette personne dans une liste (par e-mail) n'a pas à
+	// deviner de qui il s'agit.
+	autre.email = texte(employe, "email")
+	autre.password = texte(employe, "temporary_password")
 	if user, ok := connexion["user"].(map[string]any); ok {
 		autre.role, _ = user["role"].(string)
 		autre.orgID, _ = user["organization_id"].(string)

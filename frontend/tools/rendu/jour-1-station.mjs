@@ -1,4 +1,10 @@
 /**
+ * ⚠️  Scénario antérieur aux lots 5 à 8 : il attend un catalogue « déjà tarifé »
+ *     et enregistre un lavage juste après l'inscription. Le produit livré fait
+ *     l'inverse : le catalogue arrive sans prix (aucun tarif n'est inventé) et
+ *     l'exploitation reste fermée jusqu'à l'activation (409 onboarding_incomplete).
+ *     Ce parcours est donc à réécrire pour les treize étapes de mise en route
+ *     (voir docs/onboarding.md) avant d'être rejoué.
  * Jour 1 d'une station neuve — parcours réel sur téléphone.
  *
  * Objectif : vérifier ce que le propriétaire fera réellement sur le Mac de la

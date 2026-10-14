@@ -3,7 +3,9 @@
 Liste de suivi tirée de [`RAPPORT-ANALYSE.md`](RAPPORT-ANALYSE.md) (§13 plan
 priorisé, §11 dette, annexe B inventaire des routes).
 
-**État au 13 octobre 2026** — le P0 est traité, une bonne partie du P1 aussi.
+**État au 14 octobre 2026** — le P0 est traité, le P1 aussi, et le parcours
+d'inscription est livré de bout en bout (lots 0 → 9 de `TODO-ONBOARDING.md` :
+inscription, mise en route en treize étapes, activation, tableau de bord).
 Ce qui reste est listé par ordre de priorité, avec le fichier concerné, la
 preuve de vérification et l'effort estimé.
 
@@ -15,8 +17,10 @@ fournisseur, décision produit).
 
 > **Onboarding** : la feuille de route dédiée est [`TODO-ONBOARDING.md`](TODO-ONBOARDING.md)
 > (audit, décisions structurantes, 10 lots de travail, tests exigés, critères d'acceptation,
-> journal de progression). Elle se suit lot par lot ; ce fichier-ci reste la liste des
-> correctifs généraux.
+> journal de progression). **Les dix lots sont livrés et vérifiés** (14 octobre 2026) ; ce
+> fichier-ci reste la liste des correctifs généraux, et le relevé final de l'onboarding
+> (ce qui est opérationnel, ce qui a été testé, ce qui reste ouvert) est au §13 de la feuille
+> de route. Le mode d'emploi du parcours lui-même est [`docs/onboarding.md`](docs/onboarding.md).
 
 ## 0. Comment vérifier ce qui est fait
 
@@ -33,20 +37,30 @@ bash scripts/verifications/verifier-env.sh dev      # ou prod
 # Cohérence des routes et des écrans (Node seul, aucun serveur)
 node scripts/verifications/coherence-routes.mjs
 
-# Rendu des dix écrans : attrape l'« écran noir » (erreur au rendu React)
+# Rendu des 18 écrans et états : attrape l'« écran noir » (erreur au rendu React)
 node scripts/verifications/rendu-pages.mjs
 
-# Sondes d'acceptation (API démarrée, base de préférence neuve)
+# Toutes les sondes d'acceptation d'un coup (API démarrée) — voir make verifier-acces
 python3 scripts/verifications/sonde-api.py           # cloisonnement, rôles, contrat
-python3 scripts/verifications/sonde-metier.py        # caisse, remises, soldes, plafonds
-python3 scripts/verifications/sonde-fiche-payee.py   # fiche encaissée verrouillée
+python3 scripts/verifications/sonde-onboarding.py    # inscription → 13 étapes → activation
+python3 scripts/verifications/sonde-tarifs.py        # catalogue, grille, sélection des prix
+python3 scripts/verifications/sonde-invitations.py   # rejoindre une entreprise
+python3 scripts/verifications/sonde-vehicules.py     # catégories, usages, combinaisons
+python3 scripts/verifications/sonde-lot7.py          # équipe, matériel, stock, commandes
+python3 scripts/verifications/sonde-lot8.py          # récapitulatif, activation, tableau de bord
+python3 scripts/verifications/sonde-metier.py        # caisse, remises, soldes, plafonds (démo)
+python3 scripts/verifications/sonde-fiche-payee.py   # fiche encaissée verrouillée (démo)
 python3 scripts/verifications/sonde-suspension.py    # entreprise suspendue coupée
 ```
 
-Les sondes passent sur l'API corrigée : **36/36, 32/32, 8/8, 1/1**, le contrôle
-de cohérence des routes est muet et les **10 écrans se rendent** sans erreur.
-La même chose tourne en intégration continue (`.github/workflows/ci.yml`,
-tâche `sondes`, sur un PostgreSQL 17 de service).
+Relevé du 14 octobre 2026, sur base peuplée : **366 contrôles, 0 échec** (10 sondes), le
+contrôle de cohérence des routes est muet et les **18 écrans se rendent** sans erreur. Sur une
+base **vierge** (recréée, migrée `0001` → `0012`), les huit sondes qui ne dépendent pas des
+données de démonstration donnent **290 contrôles au vert**, et les deux sondes de démonstration
+(**57 contrôles**) tournent sur une base neuve créée avec `SEED_DEMO=true`. Marche à suivre :
+[`docs/onboarding.md`](docs/onboarding.md) §10. La même chose tourne en intégration continue
+(`.github/workflows/ci.yml` : tâche `backend` avec PostgreSQL de service pour les 60 tests de
+bout en bout, tâche `sondes` pour les 10 sondes).
 
 ---
 
@@ -211,14 +225,20 @@ tâche `sondes`, sur un PostgreSQL 17 de service).
 
 ## 4. P2 — qualité et tests
 
-- [x] **Tests Go de bout en bout** (`backend/e2e_test.go`) : **14 tests** rejouant
+- [x] **Tests Go de bout en bout** (`backend/e2e_test.go` puis `e2e_lot7_test.go`,
+      `e2e_lot8_test.go`, `e2e_lot9_test.go`) : **65 tests** au total, rejouant
       les mêmes scénarios que les sondes Python, sans serveur séparé — chaque
       test crée son schéma PostgreSQL (`CREATE SCHEMA`), applique les
       migrations, démarre l'API par `httptest` et supprime le schéma à la fin
       (aucune donnée de la base visée n'est lue ni modifiée). Plus **5 tests**
       de vérification des jetons Clerk (`backend/clerk_test.go`). Lancement :
       `make test-e2e` (base de `make db` par défaut, `TEST_DSN` pour une autre).
-      Sans `DATABASE_URL`, ils sont ignorés plutôt qu'en échec.
+      Sans `DATABASE_URL`, ils sont ignorés plutôt qu'en échec. Les **4 tests du lot 9**
+      (`e2e_lot9_test.go`) portent sur la sécurité : 45 tentatives d'accès d'une entreprise sur
+      les données d'une autre (lecture, écriture, désactivation), avec contrôle que chaque route
+      visée existe bien — un `404` de route inconnue ne doit pas faire passer un test d'isolation
+      pour un test réussi —, ce qu'un gérant ne peut pas faire, ce qu'un caissier ne peut pas
+      tarifer, et les plafonds de la formule Essai (1 station, 3 comptes).
       Ces tests ont trouvé deux incohérences corrigées dans la foulée :
       le réglage « caisse ouverte obligatoire » manquait sur la station créée à
       l'inscription (32 stations sur 33 de la base de développement étaient
@@ -230,8 +250,13 @@ tâche `sondes`, sur un PostgreSQL 17 de service).
 - [x] **Test de rendu des pages** : `scripts/verifications/rendu-pages.mjs`
       (10 écrans en jsdom) et `scripts/verifications/coherence-routes.mjs`,
       branchés sur `make check`, `make smoke` et `make rendu`.
-- [ ] **Brancher `scripts/recette-jour1.sh` et `frontend/tools/rendu/*.mjs`**
-      sur une cible `make recette` réellement exécutable, ou les retirer.
+- [ ] **`scripts/recette-jour1.sh` et `frontend/tools/rendu/*.mjs` sont périmés** (constaté le
+      14 octobre 2026) : ils décrivent le produit d'avant les lots 5 à 8 — un catalogue
+      « déjà tarifé » à l'inscription, puis un lavage enregistré sans activation. Le produit
+      livré fait l'inverse (aucun prix inventé ; `409 onboarding_incomplete` tant que la station
+      n'est pas activée), donc ces scénarios échouent au troisième point. Un avertissement a été
+      posé en tête du script, des trois scénarios et des cibles `make recette` / `make rendu`, et
+      le README le dit. Reste à les **réécrire pour les treize étapes** (ou à les retirer).
       Effort : ½ j.
 - [ ] **Découper `backend/handlers_misc.go`** (281 lignes, un fourre-tout) par
       domaine, et regrouper la sérialisation JSON (aujourd'hui dispersée dans
@@ -290,7 +315,19 @@ tâche `sondes`, sur un PostgreSQL 17 de service).
 | `d4a1582` | Outil de saisie des variables d'environnement |
 | `00c7624` | Configuration réelle installée, clé publique Clerk exploitée |
 | `82c3504` | Migrations numérotées, lignes de fiche rattachées à leur entreprise |
-| _à venir_ | `Makefile`, `compose.yaml`, tests de bout en bout, deux correctifs trouvés par les tests |
+| `e0acc6d` | Lot 1 — créer ou rejoindre un espace (invitations) |
+| `182f6d9` | Lots 2 et 3 — identité de l'entreprise, station et horaires |
+| `4439f35` | Lot 4 — catégories de véhicules et usages commerciaux |
+| `8df5831` | Lot 5 — prestations, options et grille tarifaire |
+| `86c4b1b` | Lots 0 à 6 — état consolidé (mise en route, tarification, caisse, reçus) |
+| `273f3e9` | Correctif d'aperçu : session reconnue hors cookie tiers, déconnexion réelle |
+| `aca1880` | Lot 7 — équipe, matériel, stock et règles de commande |
+| `423d568` | Lot 8 — récapitulatif, activation transactionnelle et tableau de bord alimenté |
+| _à venir_ | Lot 9 — tests d'isolation, documentation, relevé final |
+
+Le détail de l'onboarding (13 étapes, prérequis d'activation, référentiels, tarification,
+invitations) est dans [`docs/onboarding.md`](docs/onboarding.md) ; le journal de mise en œuvre,
+lot par lot, dans [`TODO-ONBOARDING.md`](TODO-ONBOARDING.md) §11.
 
 Rien n'est encore poussé sur `origin` : les commits sont locaux, à pousser
 après revue.

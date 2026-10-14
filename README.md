@@ -37,13 +37,25 @@ l'application est servie par l'API Go — rien à modifier dans le code. En dév
 (`make web`), le changement est immédiat. L'API demande aux navigateurs de revalider ces fichiers
 (`Cache-Control: no-cache`) : la nouvelle photo s'affiche sans vider le cache à la main.
 
-Le formulaire d'inscription est groupé en deux temps — *votre station*, puis *votre compte de
-propriétaire* — pour rester lisible malgré ses sept champs. Les deux écrans sont montés par
-`make smoke` (34 pages vérifiées), qui compte aussi les appels à `/auth/me` : un visiteur sans
-session doit en déclencher un seul. Ce garde-fou vient d'un défaut réel — le 401 de `/auth/me`
-invalidait tout le cache, ce qui relançait `/auth/me`, et ainsi de suite (2 300 requêtes en cinq
-secondes mesurées dans un vrai navigateur). Le parcours complet « inscription → mise en route →
-connexion » est rejoué dans un vrai navigateur par les outils de `tools/rendu/`.
+Le formulaire d'inscription est groupé en deux temps — *votre entreprise et sa station*, puis
+*votre compte de propriétaire* — pour rester lisible. Il demande quatre choses au serveur : le nom
+de l'entreprise, le nom de la station, le téléphone et la ville ; le serveur crée **une seule
+fois** l'entreprise, sa station, le compte propriétaire et l'abonnement d'essai, puis ouvre
+l'écran **Mise en route**.
+
+Ce qui suit n'est pas un formulaire de bienvenue : c'est un parcours de treize étapes dont l'état
+est **constaté par le serveur** sur les données réellement enregistrées (aucune étape n'est cochée
+par le navigateur), dont huit obligatoires — identité, horaires, catégories de véhicules,
+catalogue, grille tarifaire, moyens de paiement. Tant que l'activation n'a pas eu lieu, les
+écritures de métier répondent `409 onboarding_incomplete` avec la liste de ce qui manque. **Aucun
+prix n'est inventé et aucune donnée d'exemple n'est ajoutée** : la station ouvre quand vous avez
+choisi vos tarifs. Parcours complet, prérequis, refus et vérifications :
+[docs/onboarding.md](docs/onboarding.md).
+
+Un garde-fou reste en place sur la session : un visiteur sans cookie ne déclenche qu'**un seul**
+appel à `/auth/me`. Il vient d'un défaut réel — le 401 de `/auth/me` invalidait tout le cache, ce
+qui relançait `/auth/me`, et ainsi de suite (2 300 requêtes en cinq secondes mesurées dans un vrai
+navigateur).
 
 Trois choses ne figurent **pas** sur ces pages, faute de les tenir :
 - « Continuer avec Google / Facebook » : aucune connexion tierce n'existe ;
@@ -186,7 +198,7 @@ make db-reset  # repartir d'une base vide (destructif)
 │   │                           clients, prestations, dépenses, rapports, plateforme…
 │   ├── permissions.go          rôles, permissions et périmètre de station
 │   ├── stores / models         requêtes SQL explicites (pgx), types partagés
-│   └── *_test.go               tests Go : 5 sur les jetons Clerk, 14 de bout en bout
+│   └── *_test.go               tests Go : 5 sur les jetons Clerk, 60 de bout en bout
 ├── src/                        React + TypeScript + Vite + Tailwind CSS 4
 │   ├── components/             ui/ (design system), auth/, Toaster, Brand, charts
 │   ├── layouts/                AppLayout (application), AdminLayout (plateforme), AuthLayout
@@ -194,7 +206,7 @@ make db-reset  # repartir d'une base vide (destructif)
 │   ├── features/               appels API par domaine (React Query)
 │   ├── hooks/ lib/ types/      session, station, thème, formatage, types d'API
 │   └── index.css               tokens du thème, classes d'interface, animations
-├── docs/                       guide d'utilisation, exploitation, API, interface
+├── docs/                       onboarding, guide d'utilisation, exploitation, API, interface
 ├── scripts/verifications/      sondes d'acceptation, rendu des écrans, cohérence
 ├── compose.yaml                PostgreSQL 17 pour le développement (make db)
 ├── Makefile                    commandes de développement
@@ -203,9 +215,12 @@ make db-reset  # repartir d'une base vide (destructif)
 
 **Choix techniques**
 
-- **Go 1.23** avec [chi](https://github.com/go-chi/chi) (routeur), [pgx](https://github.com/jackc/pgx)
-  (pilote PostgreSQL) et **SQL explicite** — pas d'ORM, pas de requêtes générées à l'exécution.
-- **PostgreSQL 16**, schéma versionné par migrations (table `schema_migrations`).
+- **Go 1.27**, routeur de la bibliothèque standard (`net/http` : `mux.HandleFunc("GET /api/v1/…")`,
+  verbes et paramètres de chemin depuis Go 1.22) et [pgx](https://github.com/jackc/pgx) comme pilote
+  PostgreSQL. **SQL explicite** — pas d'ORM, pas de requêtes générées à l'exécution. Les jetons Clerk
+  sont vérifiés avec `clerk-sdk-go` et `golang-jwt`; les webhooks, avec `svix`.
+- **PostgreSQL 17** (image `postgres:17-alpine` de `compose.yaml`), schéma versionné par migrations
+  (table `schema_migrations`, `0001` → `0012`).
 - **React 19 + TypeScript strict + Vite + Tailwind CSS 4 + React Router + TanStack Query**,
   graphiques [Recharts](https://recharts.org), animations [Framer Motion](https://motion.dev).
 - **Design system maison** : `src/components/ui/` (primitives, surfaces, données, formulaires,
@@ -230,7 +245,10 @@ tous les modules — lavages, rapports, dépenses, clients, employés, caisse, p
 encaissements. Le propriétaire, lui, garde l'entreprise entière : c'est nécessaire pour ouvrir
 une seconde station.
 
-Les tests `TestIsolationEntreEntreprises`, `TestPermissionsParRole` et `TestPerimetreDuneStation`
+Les tests `TestIsolationEntreEntreprises`, `TestIsolationDesEntitesDesLots1A8` (45 tentatives
+d'accès d'une entreprise sur les données d'une autre, lecture et écriture, plus le contrôle que
+chaque route visée existe bien), `TestPermissionsParRole`, `TestManagerNePeutPasUsurperLeProprietaire`,
+`TestCaissierSansPermissionDePrix`, `TestLimitesDeFormuleAppliquees` et `TestPerimetreDuneStation`
 le vérifient de bout en bout (`make test-e2e`) ; `make verifier-acces` le vérifie sur
 l'application qui tourne.
 Détail des règles et de leurs limites : [docs/securite-acces.md](docs/securite-acces.md).
@@ -262,18 +280,18 @@ verrouillée ; sa réouverture exige un motif et laisse une trace.
 ## 5. Tests et vérifications
 
 ```bash
-# API : 19 tests Go (14 de bout en bout sur une vraie base PostgreSQL,
-# 5 sur la vérification des jetons Clerk), base jetable : chaque test crée son
-# propre schéma, le supprime à la fin et ne touche à rien d'autre
+# API : 65 tests Go (5 sur la vérification des jetons Clerk, 60 de bout en bout
+# sur une vraie base PostgreSQL), base jetable : chaque test crée sa propre
+# entreprise, la supprime à la fin et ne touche à rien d'autre
 make test-e2e
 
 # Formatage, compilation Go, types et build du frontend, routes, écrans,
 # classes d'interface et cohérence de la configuration
 make check
 
-# Interface : les 11 écrans internes sont réellement rendus (jsdom) sur l'API en marche
-make api          # dans un terminal
-make smoke        # dans un autre
+# Interface : 18 écrans et états rendus hors navigateur, avec une session connue
+# d'avance et le réseau coupé (aucun serveur n'est nécessaire)
+make smoke
 ```
 
 Les tests couvrent : création d'entreprise et de station, connexion, enregistrement d'un
@@ -284,23 +302,35 @@ station, isolation entre deux entreprises, migrations (rejeu sans effet, réglag
 validation des entrées. Sans `DATABASE_URL`, ces tests sont ignorés : `go test ./...` reste
 vert sur une machine sans PostgreSQL.
 
-`make smoke` ouvre une session réelle avec un compte de démonstration, monte chaque page de
-l'application dans un DOM simulé et vérifie qu'elle affiche ses données (tableau de bord,
-lavages, prestations, clients, employés, caisse, dépenses, rapports, commissions, paramètres,
-abonnement, compte, page introuvable) — soit 31 pages sur 4 profils. Il vérifie aussi qu'un caissier ne
-voit pas les pages qui lui sont interdites et qu'un compte dont le mot de passe est provisoire
-est bien détourné vers « Mon compte ». Ce test écrit dans la base de démonstration : il crée un
-compte `smoke.provisoire@washguard.ci` (mot de passe provisoire régénéré à chaque exécution) et
-règle le barème de commissions de la station de démonstration (500 FCFA par lavage terminé,
-objectif de 300 000 FCFA par mois) pour que l'écran Commissions soit vérifié avec de vrais
-montants plutôt qu'avec un état de paie à zéro. Utilisez une base dédiée si vous ne voulez pas
-de ces lignes. C'est ce qui remplace la
-vérification manuelle écran par écran.
+`make smoke` rend **18 écrans et états** hors navigateur (`react-dom/server`, dans la pile de
+fournisseurs réelle de l'application : thème, notifications, session, station) : connexion,
+inscription, mot de passe oublié, invitation, tableau de bord (propriétaire, gérant, caissier),
+mise en route, récapitulatif de mise en route, lavages, caisse, prestations, tarifs, clients,
+employés, dépenses, rapports, paramètres (plusieurs onglets), abonnement, page introuvable. Le
+réseau y est **coupé** (`fetch` échoue volontairement) et la session est fournie d'avance : ce
+contrôle attrape l'« écran noir » — une erreur pendant le rendu React fait disparaître toute
+l'application, sans message. Il ne remplace pas un test dans un vrai navigateur, qui reste
+disponible à part (`make rendu`, qui exige `puppeteer-core` et un Chromium) ; il s'exécute partout,
+en quelques secondes, sans rien installer de plus et **sans écrire dans la base**.
 
-### Recette de première utilisation
+Le parcours réel (données, permissions, refus) est couvert par les tests Go (`make test-e2e`) et par
+les sondes d'acceptation (`make verifier-acces`), qui parlent à l'API en marche sur une base
+consacrée : `sonde-onboarding.py` (inscription → treize étapes → activation), `sonde-lot8.py`
+(récapitulatif, activation, première fiche, tableau de bord), `sonde-tarifs.py`,
+`sonde-vehicules.py`, `sonde-invitations.py`, `sonde-fiche-payee.py`, `sonde-lot7.py`,
+`sonde-metier.py`, `sonde-api.py`, `sonde-suspension.py`.
 
-`make recette` rejoue **deux parcours de première utilisation**, sur **une base jetable** (votre
-base de développement n'est ni lue ni modifiée) et dans un vrai navigateur au format téléphone :
+### Recette de première utilisation — **à réécrire, ne pas lancer**
+
+`make recette` rejoue deux parcours dans un vrai navigateur, sur une base jetable. **Cette recette
+décrit le produit d'avant la mise en route** : elle attend un « catalogue d'Abidjan déjà tarifé »
+et enregistre un lavage juste après l'inscription, alors que le catalogue arrive désormais **sans
+prix** (aucun tarif n'est inventé) et qu'une station non activée refuse toute écriture de métier
+(`409 onboarding_incomplete`). Elle échoue donc au troisième point, et le script comme les
+scénarios portent cet avertissement en tête. La recette qui fait foi aujourd'hui est la campagne
+d'acceptation en lignes de commande (`make verifier-acces` + `verifier-acces` sur une base vierge) :
+la marche à suivre et les chiffres relevés sont dans [docs/onboarding.md](docs/onboarding.md) §10.
+Pour mémoire, ce que la recette navigateur décrivait :
 
 1. **le premier jour d'une station neuve** : création de l'espace, catalogue d'Abidjan déjà
    tarifé, premier lavage, refus d'un encaissement en espèces sans caisse ouverte, encaissement
@@ -311,8 +341,9 @@ base de développement n'est ni lue ni modifiée) et dans un vrai navigateur au 
    vers « Mon compte », choix du mot de passe définitif, premier lavage du caissier, visibilité
    chez le propriétaire, et refus de la sixième embauche par la limite de la formule Essai.
 
-26 contrôles en tout. C'est le contrôle à lancer après une modification sensible, avant
-d'installer chez une station.
+26 contrôles en tout — c'était le contrôle à lancer après une modification sensible. Il le
+redeviendra quand les scénarios `frontend/tools/rendu/*.mjs` auront été réécrits pour les treize
+étapes de mise en route.
 
 ```bash
 make build        # le frontend compilé est servi par l'API, comme à la station

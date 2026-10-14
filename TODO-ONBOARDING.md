@@ -503,28 +503,42 @@ idempotent, instantané `onboarding_snapshot` + ligne de journal dans la même
 transaction, migration `0012`), bloc `setup` partagé par le récapitulatif et le
 tableau de bord (`backend/dashboard_setup.go`), écran récapitulatif
 (`/mise-en-route/recapitulatif`) et arrivée du tableau de bord alimentée par les
-données réelles. Vérifié : `sonde-lot8.py` **75/75**, `go test ./...` **57/57**,
+données réelles. Vérifié : `sonde-lot8.py` **75/75**, `go test -count=1 ./...` **61/61**,
 `rendu-pages.mjs` **18/18** (une page de plus), campagne d'acceptation complète
 au vert, `make check` **5/5**.
 
-### Lot 9 — Sécurité, isolation, documentation, clôture
+### Lot 9 — Sécurité, isolation, documentation, clôture — **fait**
 
-- [ ] **ONB-9.1** Batterie de tests d'isolation (une table par entité nouvelle) : lecture,
+- [x] **ONB-9.1** Batterie de tests d'isolation (une table par entité nouvelle) : lecture,
       écriture, mise à jour, suppression logique refusées entre entreprises ; `organization_id`
       fabriqué côté front inopérant ; `manager` ne peut pas usurper `owner` ; caissier sans
       permission de prix.
-- [ ] **ONB-9.2** `make db-reset && make migrate` sur base neuve, **et** application des migrations
+- [x] **ONB-9.2** `make db-reset && make migrate` sur base neuve, **et** application des migrations
       sur une base déjà peuplée (avec données) : les deux doivent passer.
-- [ ] **ONB-9.3** Documentation : `docs/onboarding.md` (parcours, états, prérequis d'activation,
+- [x] **ONB-9.3** Documentation : `docs/onboarding.md` (parcours, états, prérequis d'activation,
       référentiels, tarification, invitations), mise à jour de `docs/api.md` (nouvelles routes),
       `README.md` (parcours d'inscription réel) et `TODO.md` (état).
-- [ ] **ONB-9.4** Parcours complet rejoué de bout en bout : inscription → espace → 13 étapes →
+- [x] **ONB-9.4** Parcours complet rejoué de bout en bout : inscription → espace → 13 étapes →
       activation → première fiche → tableau de bord, **sur base vierge**, avec captures de
       vérification (sondes + `rendu-pages.mjs`).
-- [ ] **ONB-9.5** Relevé final : ce qui est opérationnel, ce qui a été testé, ce qui reste ouvert,
+- [x] **ONB-9.5** Relevé final : ce qui est opérationnel, ce qui a été testé, ce qui reste ouvert,
       hypothèses retenues, prochaines améliorations par priorité.
 
 *Effort ≈ 1,5 j.*
+
+**Livré** : `backend/e2e_lot9_test.go` (4 tests : 45 tentatives d'accès entre deux entreprises sur
+neuf domaines de données, avec contrôle que chaque route visée existe bien ; pouvoirs du gérant ;
+caissier sans droit de prix ; plafonds de la formule Essai) ; `docs/onboarding.md` (nouveau :
+parcours, états, treize étapes, prérequis, référentiels, tarification, invitations, refus, limites) ;
+`README.md` (parcours d'inscription réel, chiffres corrigés, recette navigateur signalée comme
+périmée) ; `TODO.md` (§0, §4 et journal des commits réalignés) ; `src/pages/LandingPage.tsx` (la
+vitrine ne promet plus un catalogue « déjà tarifé ») ; `.github/workflows/ci.yml` (les 60 tests de
+bout en bout tournent désormais en intégration continue sur un PostgreSQL de service, et les six
+sondes manquantes ont été ajoutées à la tâche `sondes`) ; `Makefile`, `scripts/recette-jour1.sh` et
+`frontend/tools/rendu/*.mjs` (avertissements d'obsolescence). Vérifié : `go test -count=1 ./...`
+**65/65**, 8 sondes sur base vierge **290/290**, 2 sondes de démonstration sur base neuve **57/57**,
+campagne complète sur base peuplée **366/366**, `rendu-pages.mjs` **18/18**, `verif-apercu.py`
+**15/15**, `make check` **5/5**. Relevé final : §13.
 
 ---
 
@@ -634,8 +648,8 @@ bash scripts/verifications/verifier-env.sh dev # configuration (n'affiche jamais
 | 5 — Prestations et tarifs | `[x]` fait | 2026-10-14 | Migration `0009_services_pricing.sql`, 18 modèles de prestations, matrices prix × catégorie × usage, revue de prix par `PUT /price-rules/matrix` (motif obligatoire) ; **37/37** contrôles de `sonde-tarifs.py`, 7 tests Go dédiés |
 | 6 — Caisse et paiements | `[x]` fait | 2026-10-14 | Migration `0010_payment_methods.sql` (9 moyens par station), encaissement, reçus numérotés, 11 réglages de caisse, étape 10 du parcours ; **22/22** contrôles de `sonde-fiche-payee.py`, 5 tests Go dédiés, `make check` 5/5 |
 | 7 — Personnel, équipements, stock, commandes | `[x]` fait | 2026-10-14 | Migration `0011_equipment_stock.sql` (matériel, stock, mouvements, poste des employés) ; 8 familles de routes (`/stations/{id}/equipment`, `/equipment/{id}`, `/stations/{id}/stock`, `/stock/items/{id}` + mouvements, `/stations/{id}/order-rules`) ; cycle de vie à **7 états** imposé par le serveur avec motifs lisibles (`transition_forbidden`, `quality_check_required`, `release_requires_payment`, `washer_queue_full`, `walk_in_not_allowed`, `washer_required`) ; parcours à **13 étapes** (équipe, matériel, règles — facultatives) ; écrans « Équipe », « Matériel », « Règles des commandes » ; **56/56** contrôles de `sonde-lot7.py` (nouvelle sonde), **55/55 tests Go**, campagne complète **40/40 · 41/41 · 37/37 · 23/23 · 36/36 · 35/35 · 22/22 · 56/56 · 1/1**, `make check` 5/5, `verif-apercu.py` 15/15 |
-| 8 — Récapitulatif et activation | `[ ]` à faire | — | — |
-| 9 — Sécurité, tests, documentation | `[ ]` à faire | — | — |
+| 8 — Récapitulatif et activation | `[x]` fait | 2026-10-14 | `GET /onboarding/summary` (sans aucun montant), `POST /onboarding/activate` (transaction unique, refus nommé qui n'écrit rien, idempotent, instantané + journal dans la même transaction, migration `0012`), bloc `setup` partagé avec le tableau de bord, écran `/mise-en-route/recapitulatif` ; `sonde-lot8.py` **75/75**, `go test` **61/61**, `rendu-pages.mjs` 18/18, `make check` 5/5 |
+| 9 — Sécurité, tests, documentation | `[x]` fait | 2026-10-14 | `e2e_lot9_test.go` (isolation entre entreprises sur 45 tentatives + contrôle de non-vacuité des routes, pouvoirs du gérant, prix interdits au caissier, plafonds de formule) ; `docs/onboarding.md` (nouveau), `README.md` et `TODO.md` réalignés, `docs/api.md` complété, CI élargie (60 tests e2e + 10 sondes) ; **65/65 tests Go**, base vierge **290/290**, base de démonstration neuve **57/57**, base peuplée **366/366**, `rendu-pages.mjs` 18/18, `verif-apercu.py` 15/15, `make check` 5/5 |
 
 **Point de départ (état du dépôt à la rédaction de cette liste)** : `make check` 5/5 vert,
 19 tests Go (5 Clerk + 14 e2e) verts, sondes d'acceptation **38/38 · 35/35 · 8/8 · 1/1**, aucun
@@ -1015,6 +1029,110 @@ RH qui n'existent pas dans `users` (masqué par `SALARY_UI_ENABLED`) ;
 
 ---
 
+### 2026-10-14 — Lot 9 livré : isolation éprouvée, documentation, clôture
+
+**Fichiers** : `backend/e2e_lot9_test.go` (nouveau, 4 tests),
+`backend/e2e_test.go` (`creerEmploye` retient l'adresse et le mot de passe
+provisoire du compte créé — sans quoi un test ne peut pas retrouver la personne
+qu'il vient de créer), `docs/onboarding.md` (nouveau), `README.md`, `TODO.md`,
+`TODO-ONBOARDING.md`, `src/pages/LandingPage.tsx`, `.github/workflows/ci.yml`,
+`Makefile`, `scripts/recette-jour1.sh`, `frontend/tools/rendu/*.mjs`.
+
+**Ce que le lot ajoute, en trois phrases** : l'isolation entre entreprises n'est
+plus supposée mais **éprouvée** — 45 tentatives d'accès d'une entreprise sur les
+données d'une autre, et la preuve que ces 45 routes existent bien (sinon un `404`
+de route inconnue ferait passer le test pour rien) ; le parcours d'inscription a
+son mode d'emploi (`docs/onboarding.md`) et ses chiffres réels ; l'intégration
+continue exécute enfin ce qui existe (60 tests de bout en bout sur PostgreSQL,
+10 sondes au lieu de 4).
+
+**Décisions prises pendant la mise en œuvre** :
+
+1. **Un test d'isolation qui ne peut pas être vide.** La batterie rejoue chaque
+   tentative **depuis le compte de la victime** : si la route n'existe pas non
+   plus pour elle, le test échoue. La distinction est nette — une route inconnue
+   est refusée par le routeur en texte brut avant tout handler, un refus métier
+   est un JSON `{"error": {...}}` : c'est la forme de la réponse qui tranche.
+2. **L'intégrité se vérifie après les attaques.** Le test relit ensuite les
+   ressources de la victime (fiche, caisse, réglages, catalogue, matériel,
+   stock) : aucune tentative refusée ne doit avoir modifié quoi que ce soit.
+   Sans cette relecture, un `403` renvoyé après écriture serait passé inaperçu.
+3. **Deux bases pour la recette, pas une.** `seedDemo` ne sème que si
+   l'entreprise est la première (`count(organizations) = 0`) : sur une base déjà
+   remplie, `SEED_DEMO=true` n'ajoute que le compte support. Les sondes qui
+   exigent les comptes de démonstration (`sonde-fiche-payee.py`,
+   `sonde-metier.py`) tournent donc sur une base **neuve** dédiée
+   (`washguard_neuve_demo`), et les huit autres sur la base vierge
+   (`washguard_neuve`). C'est un constat sur l'outil, pas un défaut du produit.
+4. **Les plafonds de formule sont testés avec l'isolation.** Ils vivent dans le
+   même fichier parce qu'ils répondent à la même question — « qu'est-ce que le
+   serveur refuse tout seul ? » — et parce que la formule Essai (1 station,
+   3 comptes) est ce qui empêche une entreprise de s'étendre en silence.
+
+**Défauts trouvés en vérifiant, et corrigés** :
+
+1. **La vitrine promettait ce que le produit ne fait plus.** « Inscription en
+   deux minutes : entreprise, station et catalogue d'Abidjan **déjà tarifé** »
+   est faux depuis le lot 5 (aucun prix n'est inventé) : la phrase est remplacée
+   par ce qui se passe réellement — un catalogue de 18 prestations **à tarifer**,
+   puis la mise en route —, et la section « Trois étapes » devient « Quatre
+   étapes » avec l'activation. Une promesse démentie dès la première minute coûte
+   plus cher qu'une phrase moins flatteuse.
+2. **La recette navigateur décrivait le produit d'avant la mise en route.**
+   `scripts/recette-jour1.sh` et les trois scénarios `frontend/tools/rendu/*.mjs`
+   attendent un catalogue pré-tarifé et enregistrent un lavage juste après
+   l'inscription : ils échouent désormais (`409 onboarding_incomplete`). Un
+   avertissement est posé en tête du script, des trois scénarios, des cibles
+   `make recette` / `make rendu` et du README ; leur réécriture pour les treize
+   étapes est listée comme travail restant (§13).
+3. **Les chiffres du README et du journal ne suivaient plus.** « 19 tests Go »
+   (65 aujourd'hui), « 11 écrans » (18), « Go 1.23 avec chi » (Go 1.27 et le
+   routeur de la bibliothèque standard), « PostgreSQL 16 » (17), et un
+   `make smoke` décrit comme écrivant dans la base de démonstration alors qu'il
+   rend les pages **hors navigateur, réseau coupé, sans écriture**. Corrigé —
+   c'est exactement le genre de phrase qu'un lecteur vérifie une fois et ne
+   croit plus ensuite.
+4. **Le compte des tests du lot 8 était faux** (57/57 au lieu de 61/61) : le
+   bloc « Livré » du lot 8 et le tableau du §11 sont réalignés sur le journal et
+   sur le commit.
+5. **L'intégration continue était verte « à tort ».** La tâche `backend`
+   lançait `go test ./...` **sans base** : les 60 tests de bout en bout étaient
+   ignorés (le harnais les saute sans `DATABASE_URL`), et seuls les 5 tests Clerk
+   s'exécutaient. Un PostgreSQL de service, `DATABASE_URL` et `-count=1` sont
+   désormais posés ; la tâche `sondes` passe de 4 à 10 sondes.
+6. **Deux attentes fausses de ma part, corrigées dans le test et non dans le
+   serveur** : `PUT /stations/{id}/profile` n'existe pas (la modification d'une
+   station, c'est `PATCH /stations/{id}` ; le profil se lit par
+   `GET /stations/{id}/profile`) et le reçu d'une fiche non soldée répond
+   légitimement `404 receipt_not_issued`. C'est le test qui s'aligne sur le
+   contrat, comme pour le lot 8.
+
+**Vérifié, chiffres réels** : `go test -count=1 ./...` → **65/65 tests verts**
+(`ok washguard/backend 38.233s`), dont 4 tests neufs d'isolation, de rôles et de
+plafonds. Sur une base **vierge recréée** (`washguard_neuve`, migrations
+`0001` → `0012`, API sur `:8099` avec `SEED_DEMO=false`,
+`AUTH_MAX_FAILURES=200 REGISTER_MAX_PER_HOUR=120`) : **290 contrôles au vert,
+0 échec** — `sonde-api.py` 21/21 (ses trois contrôles de démonstration annoncés
+« ignorés »), `sonde-onboarding.py` 41/41, `sonde-tarifs.py` 37/37,
+`sonde-invitations.py` 23/23, `sonde-vehicules.py` 36/36, `sonde-lot7.py` 56/56,
+`sonde-lot8.py` 75/75, `sonde-suspension.py` 1/1. Sur une base de démonstration
+**créée à l'instant** (`washguard_neuve_demo`, `SEED_DEMO=true`, API `:8098`) :
+`sonde-fiche-payee.py` **22/22**, `sonde-metier.py` **35/35**. Sur la base
+peuplée (`washguard_sondes`, `make verifier-acces`) : **366 contrôles, 0 échec**
+(10 sondes). Écrans : `rendu-pages.mjs` **18/18**, `coherence-routes.mjs` et
+`classes-ui.mjs` au vert, `verif-apercu.py` **15/15** ; `make check` **5/5**.
+
+**Reste ouvert, assumé** : le plafond par laveur est vérifié à la **création** de
+la fiche (le contrat noté parlait de l'affectation) — à trancher ; le téléphone
+n'est pas obligatoire au formulaire d'inscription alors qu'il fait partie du
+prérequis « identité de l'entreprise » (l'écran de mise en route le signale, mais
+l'inscription pourrait l'exiger) ; `SalarySection.tsx` attend huit champs RH qui
+n'existent pas dans `users` (masqué par `SALARY_UI_ENABLED`) ; `delivered_at` est
+renseigné à la clôture, sans écran dédié pour le contester ; les scénarios
+navigateur restent à réécrire. Détail et priorités : §13.
+
+---
+
 ## 12. Décisions tranchées le 2026-10-14
 
 1. **Nom du produit : WashGuard**, partout. Aucun renommage ; « PRESSPRO » n'est pas repris.
@@ -1032,3 +1150,114 @@ Questions ouvertes secondaires (elles ne bloquent rien) :
   accepte les deux sans changement de schéma.
 - Faut-il autoriser plusieurs espaces par compte (un gérant qui suit deux entreprises) ? Prévu en
   V2, nécessite une table `memberships` et un sélecteur d'espace actif.
+
+---
+
+## 13. Relevé final — 14 octobre 2026
+
+Ce que le parcours d'inscription est devenu, ce qui a été réellement testé, les hypothèses
+retenues, ce qui reste ouvert et dans quel ordre le prendre.
+
+### 13.1 Ce qui est opérationnel
+
+| Domaine | État |
+| --- | --- |
+| **Inscription** | crée en une transaction l'entreprise, sa station, le compte propriétaire et l'abonnement d'essai ; conduit à l'écran de mise en route ; aucun prix ni aucune donnée d'exemple |
+| **Mise en route** | 13 étapes (8 obligatoires) dont l'état est **constaté** par le serveur ; reprise après déconnexion ; étapes facultatives modifiables après l'activation |
+| **Identité** | entreprise (raison sociale, contacts, registre légal, facturation) et station (localisation, capacités, horaires, exceptions) |
+| **Référentiels** | 13 catégories de véhicules (5 familles), 18 usages commerciaux, combinaisons véhicule × usage ; 18 modèles d'équipement ; 9 moyens de paiement par station |
+| **Prestations et prix** | catalogue par station, compatibilités, options et suppléments, grille tarifaire à cinq niveaux, prix calculé **par le serveur** (`409 price_required` plutôt qu'une vente au hasard, `409 price_rule_conflict` plutôt qu'un arbitrage silencieux), revue de prix motivée et journalisée |
+| **Caisse** | 11 réglages par station, ouvertures/clôtures avec comptage et écart, encaissements, reçus numérotés, annulation motivée (jamais de suppression) |
+| **Équipe** | 5 rôles, création de compte ou invitation (e-mail **ou** téléphone, code de 8 caractères dictable), mot de passe provisoire, réinitialisation par le propriétaire, rémunération réservée |
+| **Matériel et stock** | 18 modèles, états (`neuf`, `bon`, `à réparer`, `hors service`), dates d'entretien, stock par mouvement avec « on n'a pas compté » distinct de « zéro » |
+| **Commandes** | cycle de vie à 7 états (`pending` = reçue/en attente, `in_progress`, `quality_check`, `ready`, `completed`, `canceled`, `disputed`) imposé par le serveur, contrôle qualité non contournable, remise subordonnée au paiement, plafond par laveur |
+| **Activation** | transaction unique, refus nommé (code, titre, constat, geste, écran) qui n'écrit **rien**, idempotente, instantané + ligne de journal |
+| **Tableau de bord** | alimenté par les données réelles ; avant la première fiche, les blocs financiers sont **retirés** et remplacés par des phrases honnêtes ; filtrage par rôle côté serveur |
+| **Isolation** | chaque requête filtre sur l'entreprise de la session ; périmètre de station pour le gérant rattaché et le caissier ; `403`/`404` sans révéler l'existence d'une donnée étrangère |
+| **Formules** | Essai (1 station, 3 comptes, 300 lavages/mois) appliqué par le serveur à la création de station, de compte, d'invitation et de fiche |
+
+### 13.2 Ce qui a été testé, et comment le rejouer
+
+| Vérification | Résultat du 14 octobre 2026 |
+| --- | --- |
+| `go test -count=1 ./...` | **65/65**, dont 60 de bout en bout sur PostgreSQL réel (`ok washguard/backend 38.233s`) |
+| Huit sondes sur base **vierge** | **290 contrôles au vert, 0 échec** |
+| Deux sondes de démonstration sur base **neuve** (`SEED_DEMO=true`) | **57 contrôles au vert** |
+| `make verifier-acces` sur base peuplée | **366 contrôles au vert, 0 échec** (10 sondes) |
+| `node scripts/verifications/rendu-pages.mjs` | **18/18** pages et états rendus |
+| `coherence-routes.mjs` · `classes-ui.mjs` | cohérents (25 routes, 24 cibles, 36 classes maison) |
+| `python3 scripts/verifications/verif-apercu.py` | **15/15** (session par jeton, sans cookie) |
+| `make check` | **5/5** |
+| Migrations | base **neuve** (`0001` → `0012`) et base **peuplée** (rejeu sans effet) |
+
+Marche à suivre détaillée : `docs/onboarding.md` §10.
+
+### 13.3 Hypothèses retenues (et ce qu'elles impliquent)
+
+1. **Le nom du produit est WashGuard**, partout. Aucun renommage n'a été fait.
+2. **Cinq rôles** (`owner`, `manager`, `cashier`, `washer`, `superadmin`) ; le « superviseur » du
+   cahier des charges est un `manager` **rattaché à une station** ; rôles personnalisés, responsable
+   de stock et comptable en V2.
+3. **Aucun prix n'est inventé** : un compte neuf reçoit 18 prestations à `0`, et la station n'ouvre
+   qu'après la grille tarifaire. Le prix du comptoir vit dans `services.price_xof` ; une prestation
+   gratuite ou sur devis est une décision explicite, pas un prix manquant.
+4. **Huit prérequis d'activation** : espace, identité de l'entreprise, identité de la station,
+   horaires, catégories, catalogue, grille tarifaire, moyens de paiement. Juridique, personnel,
+   équipement, stock et usages restent facultatifs — une station peut ouvrir avec un seau et une
+   éponge.
+5. **La station reçoit des véhicules, pas des rendez-vous** : il n'existe ni réservation, ni prise
+   de rendez-vous, ni paiement en ligne. Le portail laveur ne porte aucun montant.
+6. **WashGuard n'envoie aucun message** : ni e-mail, ni SMS, ni WhatsApp. Les invitations se
+   transmettent par lien ou code.
+7. **Un compte = une entreprise** (pas de `memberships` en V1) : une invitation qui viserait un
+   compte déjà rattaché est refusée (`409 invitation_requires_login`) plutôt que de déplacer le
+   compte en silence.
+8. **Le fuseau de la station est `Africa/Abidjan` (UTC+0)** : les horaires et l'état d'ouverture sont
+   calculés dans ce fuseau, sans heure d'été. Un changement de fuseau n'est pas exposé dans l'interface.
+9. **Les données de démonstration n'existent que sur demande** (`SEED_DEMO=true` **et** base vide) :
+   aucune entreprise cliente n'en reçoit.
+
+### 13.4 Ce qui reste ouvert
+
+**Technique (aucun de ces points ne bloque une mise en service)**
+
+1. Les scénarios navigateur (`scripts/recette-jour1.sh`, `frontend/tools/rendu/*.mjs`) décrivent le
+   produit d'avant la mise en route et échouent ; il faut les réécrire pour les treize étapes
+   (½ journée). Ils portent un avertissement en tête, ainsi que les cibles `make recette` et
+   `make rendu`.
+2. Le **téléphone** n'est pas obligatoire à l'inscription alors qu'il fait partie du prérequis
+   « identité de l'entreprise » : l'écran de mise en route le réclame, mais deux allers-retours
+   seraient évitables. À trancher (l'exiger au formulaire, ou l'accepter absent).
+3. Le **plafond par laveur** est vérifié à la création de la fiche (`409 washer_queue_full`) ; le
+   contrat initial parlait de l'affectation. À trancher.
+4. **`SalarySection.tsx`** attend huit champs RH (prime, ancienneté, IBAN…) qui n'existent pas dans
+   `users` : l'écran est masqué par `SALARY_UI_ENABLED`, donc invisible en production. À retirer ou
+   à porter par un vrai modèle de paie (hors V1).
+5. **`delivered_at`** est renseigné à la clôture de la fiche, sans écran pour le corriger en cas de
+   litige — l'état `disputed` existe, la trace horaire est figée.
+6. `backend/handlers_misc.go` reste un fourre-tout, et la sérialisation JSON est dispersée dans les
+   handlers.
+7. La CI vérifie la compilation, les tests et les sondes, mais **pas** encore l'échec volontaire
+   (`go vet` oui, analyse statique plus poussée non).
+
+**Décisions produit à confirmer [vous]**
+
+1. La page de connexion dépend encore de Clerk pour l'aperçu : le parcours réel n'a pu être validé
+   que par l'API (le domaine Clerk et Neon sont hors d'atteinte depuis l'environnement de
+   développement).
+2. Un service d'envoi (e-mail ou WhatsApp) reste à choisir si les invitations doivent partir seules.
+
+### 13.5 Prochaines améliorations, par priorité
+
+1. **P1 — Réécrire les scénarios navigateur** pour le parcours réel (treize étapes, activation) :
+   c'est le seul contrôle annoncé dans la documentation qui ne tourne plus.
+2. **P1 — Historique des interventions du matériel** : un équipement porte aujourd'hui un état et des
+   dates, mais ni le journal des pannes, ni le coût par intervention, ni la pièce jointe.
+3. **P1 — Flottes et contrats** : tarifs négociés, facturation groupée, échéances, plafond de crédit —
+   la table `price_rules` accueille déjà un niveau `client_contract`.
+4. **P1 — Stock avancé** : consommation par prestation, seuils d'alerte, inventaires périodiques.
+5. **P2 — Rôles personnalisés et permissions fines** (responsable de stock, comptable).
+6. **P2 — Promotions et périodes commerciales** (les règles de prix portent déjà `valid_from`/`valid_to`).
+7. **P2 — Reçus imprimés et exports fiscaux**, mentions légales paramétrées.
+8. **P2 — Photos avant/après** et contrôle qualité avec pièces jointes.
+9. **P3 — Multi-espaces par compte**, cartographie des stations, réservation en ligne.
