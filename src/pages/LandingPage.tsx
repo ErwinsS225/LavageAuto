@@ -1,15 +1,15 @@
 /**
- * Page d'accueil publique : présentation du produit et liens connexion.
+ * Page d'accueil publique : vitrine du produit sur fond « BackgroundBeams ».
  *
- * C'est la seule page où l'on prend le temps d'un décor : halos de marque en
- * fond, toile quadrillée en haut, aperçu du produit dans une carte en verre, et
- * apparitions au défilement. Les blocs « aperçu » sont des maquettes en CSS
- * (aucune donnée réelle, aucun graphique embarqué) : la page reste légère.
+ * Refonte : décor de faisceaux animés en pleine page (héro inclus), sections en
+ * vitrine posées par-dessus, apparitions au défilement. Les blocs « aperçu »
+ * restent des maquettes en CSS (aucune donnée réelle) : la page reste légère.
  */
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowRight, BarChart3, CheckCircle2, Droplets, ShieldCheck, Sparkles, Wallet } from 'lucide-react'
+import { ArrowRight, BarChart3, CheckCircle2, Droplets, ShieldCheck, Smartphone, Sparkles, Wallet } from 'lucide-react'
 
+import { BackgroundBeams } from '@/components/BackgroundBeams'
 import { Brand } from '@/components/Brand'
 import { Reveal } from '@/components/ui'
 import { Button } from '@/components/ui/primitives'
@@ -59,8 +59,8 @@ export default function LandingPage() {
   usePageTitle('Accueil')
 
   return (
-    <div className="app-aurora min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-30 border-b border-line/70 bg-surface/80 backdrop-blur-glass">
+    <div className="min-h-dvh overflow-x-clip bg-canvas">
+      <header className="sticky top-0 z-30 border-b border-line/70 bg-canvas/70 backdrop-blur-glass">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <Link to="/">
             <Brand />
@@ -79,15 +79,21 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4">
-        {/* --- Héros ------------------------------------------------------- */}
-        <section className="relative grid items-center gap-10 py-14 lg:grid-cols-2 lg:py-20">
-          <div className="relative grid-lines absolute inset-x-0 -top-4 h-64" aria-hidden="true" />
+      {/* --- Héros : plein écran sur le décor de faisceaux ---------------- */}
+      <section className="relative flex min-h-[calc(100dvh-57px)] items-center overflow-hidden">
+        <BackgroundBeams className="opacity-90" />
+        {/* Voile sombre pour garder le texte lisible sur les faisceaux. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_40%,transparent_0%,var(--app-bg)_85%)]"
+        />
+
+        <div className="relative mx-auto w-full max-w-6xl px-4 py-20">
           <motion.div
             variants={stagger(0.07, 0.05)}
             initial="hidden"
             animate="visible"
-            className="relative"
+            className="mx-auto max-w-2xl text-center"
           >
             <motion.span
               variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
@@ -98,23 +104,23 @@ export default function LandingPage() {
             </motion.span>
             <motion.h1
               variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE_SOFT } } }}
-              className="mt-4 text-3xl font-bold leading-[1.15] tracking-tight text-ink sm:text-[2.6rem]"
+              className="mt-5 text-4xl font-bold leading-[1.12] tracking-tight text-ink sm:text-5xl lg:text-6xl"
             >
               Pilotez votre station de lavage,{' '}
-              <span className="bg-gradient-to-r from-brand to-brand-strong bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-brand via-info to-success bg-clip-text text-transparent">
                 sans tableur.
               </span>
             </motion.h1>
             <motion.p
               variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
-              className="mt-4 max-w-xl text-[0.95rem] leading-relaxed text-ink-muted"
+              className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-ink-muted sm:text-lg"
             >
               Lavages, caisse, dépenses, commissions et rapports — une application pensée pour les
               stations d’Afrique de l’Ouest, en FCFA, utilisable depuis un téléphone au guichet.
             </motion.p>
             <motion.div
               variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
-              className="mt-7 flex flex-wrap items-center gap-3"
+              className="mt-8 flex flex-wrap items-center justify-center gap-3"
             >
               <Link to="/inscription">
                 <Button variant="primary" size="lg" icon={<Sparkles size={16} />}>
@@ -129,7 +135,7 @@ export default function LandingPage() {
             </motion.div>
             <motion.ul
               variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
-              className="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-xs text-ink-muted"
+              className="mt-8 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-ink-muted"
             >
               {['Montants en FCFA', 'Rôles séparés par station', 'Journal d’audit'].map((item) => (
                 <li key={item} className="flex items-center gap-1.5">
@@ -142,10 +148,10 @@ export default function LandingPage() {
 
           {/* Aperçu de l'application : maquette en CSS, sans donnée réelle. */}
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.6, ease: EASE_SOFT, delay: 0.15 }}
-            className="relative"
+            transition={{ duration: 0.6, ease: EASE_SOFT, delay: 0.35 }}
+            className="relative mx-auto mt-14 max-w-xl"
           >
             <div className="card hairline-highlight overflow-hidden p-4 shadow-float">
               <div className="flex items-center justify-between gap-3">
@@ -187,8 +193,11 @@ export default function LandingPage() {
               <p className="tabular text-sm font-semibold text-success">500 FCFA</p>
             </div>
           </motion.div>
-        </section>
+        </div>
+      </section>
 
+      {/* --- Contenu : sections posées sur fond clair ----------------------- */}
+      <main className="relative mx-auto max-w-6xl px-4">
         {/* --- Fonctions --------------------------------------------------- */}
         <section className="py-6">
           <Reveal>
@@ -251,6 +260,7 @@ export default function LandingPage() {
         {/* --- Appel à l'action -------------------------------------------- */}
         <Reveal>
           <section className="relative overflow-hidden rounded-panel border border-line bg-surface p-8 text-center shadow-e3">
+            <BackgroundBeams className="opacity-70" />
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand/10 via-transparent to-success/10"

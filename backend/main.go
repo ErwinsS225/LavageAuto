@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	_ "embed"
+	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -18,13 +19,82 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-//go:embed migrations/0001_initial.sql
-var sqlInitial string
+// Migrations embarquées : appliquées dans l'ordre du nom de fichier
+// (0001, 0002, …) à chaque démarrage. Un tableau schema_migrations garde la
+// trace des fichiers déjà joués : un nouveau fichier est pris en compte sans
+// modification du code, un fichier déjà appliqué est ignoré. Les migrations
+// restent idempotentes au niveau SQL (IF NOT EXISTS / ADD COLUMN IF NOT EXISTS)
+// en tant que garde-fou, mais le suivi par nom garantit qu'une migration n'est
+// jamais rejouée inutilement — cruciale sur Neon (branches) et PostgreSQL.
+//
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+// migrationsTable contient le schéma de suivi des migrations appliquées.
+// Créée avant la première migration et jamais modifiée après.
+const migrationsTable = `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version    text PRIMARY KEY,
+  applied_at timestamptz NOT NULL DEFAULT now()
+)
+`
 
 func appliquerMigrations(ctx context.Context, db *pgxpool.Pool) error {
-	_, err := db.Exec(ctx, sqlInitial)
+	// 1. Table de suivi (idempotente).
+	if _, err := db.Exec(ctx, migrationsTable); err != nil {
+		return fmt.Errorf("créer schema_migrations : %w", err)
+	}
+
+	// 2. Lire les fichiers de migration embarqués, dans l'ordre du nom.
+	entrees, err := fs.ReadDir(migrationsFS, "migrations")
 	if err != nil {
-		return fmt.Errorf("0001_initial : %w", err)
+		return fmt.Errorf("lister les migrations : %w", err)
+	}
+
+	for _, e := range entrees {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		version := e.Name()
+
+		// 3. Vérifier si déjà appliquée.
+		var dejaAppliquee bool
+		if err := db.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, version).
+			Scan(&dejaAppliquee); err != nil {
+			return fmt.Errorf("vérifier migration %s : %w", version, err)
+		}
+		if dejaAppliquee {
+			continue
+		}
+
+		// 4. Lire le corps SQL.
+		chemin := "migrations/" + e.Name()
+		body, err := fs.ReadFile(migrationsFS, chemin)
+		if err != nil {
+			return fmt.Errorf("%s : %w", version, err)
+		}
+
+		// 5. Appliquer dans une transaction : soit tout réussit et on
+		//    enregistre la migration, soit la transaction est annulée.
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("transaction %s : %w", version, err)
+		}
+		if _, err := tx.Exec(ctx, string(body)); err != nil {
+			tx.Rollback(ctx)
+			return fmt.Errorf("migration %s : %w", version, err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
+			tx.Rollback(ctx)
+			return fmt.Errorf("enregistrer migration %s : %w", version, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit migration %s : %w", version, err)
+		}
+
+		log.Printf("migration %s appliquée", version)
 	}
 	return nil
 }
@@ -315,6 +385,7 @@ func (a *App) nouveauRouteur() *routeur {
 	a.enregistrerRoutesStations(rt)
 	a.enregistrerRoutesReferentiels(rt)
 	a.enregistrerRoutesCatalogue(rt)
+	a.enregistrerRoutesTarifs(rt)
 	a.enregistrerRoutesEquipe(rt)
 	a.enregistrerRoutesLavages(rt)
 	a.enregistrerRoutesCaisse(rt)

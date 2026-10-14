@@ -98,18 +98,18 @@ func (a *App) constatEtape(ctx context.Context, organizationID string, st *stati
 		}
 		return false, "Aucun jour d'ouverture défini.", "Définissez au moins une journée d'ouverture complète."
 	case "categories":
-				if st == nil {
+		if st == nil {
 			return false, "Aucune station.", "Créez d'abord votre station."
 		}
-if cat2 := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_categories WHERE station_id = $1 AND is_active`, st.ID); cat2 > 0 {
+		if cat2 := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_categories WHERE station_id = $1 AND is_active`, st.ID); cat2 > 0 {
 			return true, fmt.Sprintf("%d catégorie(s) active(s).", cat2), ""
 		}
 		return false, "Aucune catégorie active.", "Activez au moins une catégorie de véhicules."
 	case "usages":
-				if st == nil {
+		if st == nil {
 			return false, "Aucune station.", "Créez d'abord votre station."
 		}
-n := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_usages WHERE station_id = $1 AND is_active`, st.ID)
+		n := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_usages WHERE station_id = $1 AND is_active`, st.ID)
 		if n > 0 {
 			return true, fmt.Sprintf("%d usage(s) véhicule actif(s).", n), "Reliez usages et catégories si besoin."
 		}
@@ -138,10 +138,10 @@ n := a.compterRequete(ctx, `SELECT COUNT(*) FROM station_vehicle_usages WHERE st
 		}
 		return false, "Aucun moyen de paiement.", "Activez au moins un moyen de paiement (espèces, mobile money…)."
 	case "equipe":
-				if st == nil {
+		if st == nil {
 			return false, "Aucune station.", "Créez d'abord votre station."
 		}
-n := a.compterRequete(ctx, `SELECT COUNT(*) FROM employees WHERE station_id = $1 AND is_active`, st.ID)
+		n := a.compterRequete(ctx, `SELECT COUNT(*) FROM employees WHERE station_id = $1 AND is_active`, st.ID)
 		if n > 0 {
 			return true, fmt.Sprintf("%d membre(s) d'équipe.", n), ""
 		}
@@ -152,10 +152,10 @@ n := a.compterRequete(ctx, `SELECT COUNT(*) FROM employees WHERE station_id = $1
 		}
 		return false, "Équipe non déclarée.", "Invitez ou déclarez votre équipe (facultatif)."
 	case "materiel":
-				if st == nil {
+		if st == nil {
 			return false, "Aucune station.", "Créez d'abord votre station."
 		}
-n := a.compterRequete(ctx, `SELECT COUNT(*) FROM equipment WHERE station_id = $1 AND is_active`, st.ID)
+		n := a.compterRequete(ctx, `SELECT COUNT(*) FROM equipment WHERE station_id = $1 AND is_active`, st.ID)
 		s := a.compterRequete(ctx, `SELECT COUNT(*) FROM stock_items WHERE station_id = $1 AND is_active`, st.ID)
 		if n+s > 0 {
 			return true, fmt.Sprintf("%d équipement(s), %d article(s) de stock.", n, s), ""
@@ -191,18 +191,18 @@ func (a *App) compterRequete(ctx context.Context, requete string, stationID stri
 // --- Constats agrégés --------------------------------------------------------
 
 type constatsCatalogue struct {
-	categories int
-	usages     int
-	couples    int
-	prestations int // actives ET proposées à la vente
-	tarifees   int // vendables avec prix utilisable
-	options    int
-	moyens     int
-	equipe     int
-	materiel   int
-	stock      int
+	categories    int
+	usages        int
+	couples       int
+	prestations   int // actives ET proposées à la vente
+	tarifees      int // vendables avec prix utilisable
+	options       int
+	moyens        int
+	equipe        int
+	materiel      int
+	stock         int
 	joursDeclares int
-	joursOuverts int
+	joursOuverts  int
 }
 
 func (a *App) compterBase(ctx context.Context, organizationID string, st *stationEntite) constatsCatalogue {
@@ -236,10 +236,10 @@ func (a *App) compterBase(ctx context.Context, organizationID string, st *statio
 // --- Calcul de l'état --------------------------------------------------------
 
 const (
-	etatEnAttente   = "pending"
-	etatEnCours     = "in_progress"
-	etatTermine     = "completed"
-	etatActif       = "active"
+	etatEnAttente = "pending"
+	etatEnCours   = "in_progress"
+	etatTermine   = "completed"
+	etatActif     = "active"
 )
 
 func (a *App) etatOnboarding(ctx context.Context, organizationID string) string {
@@ -402,13 +402,13 @@ func (a *App) calculerOnboarding(ctx context.Context, organizationID string, st 
 		"state":           etat,
 		"progress": map[string]interface{}{
 			"done": faitesRequises, "total": totalRequises,
-			"percent":   pourcent(faitesRequises, totalRequises),
+			"percent":    pourcent(faitesRequises, totalRequises),
 			"steps_done": countDone(rendu), "steps_total": len(rendu),
 		},
-		"steps":       rendu,
-		"missing":     manquantes,
+		"steps":        rendu,
+		"missing":      manquantes,
 		"can_activate": canActivate,
-		"started_at":  formatTemps(startedAt),
+		"started_at":   formatTemps(startedAt),
 		"activated_at": formatTemps(activatedAt),
 	}
 	if org, err := a.lireOrganisation(ctx, organizationID); err == nil && org != nil {
@@ -942,7 +942,7 @@ func (a *App) activerStation(w http.ResponseWriter, r *http.Request, sess *sessi
 			"categories_active": c.categories, "usages_active": c.usages, "services_sellable": c.prestations,
 			"services_sellable_priced": c.tarifees, "payment_methods_active": c.moyens, "options_active": c.options,
 		},
-		"opening_days": c.joursOuverts,
+		"opening_days":       c.joursOuverts,
 		"optional_remaining": []string{},
 	}
 	auteur := map[string]interface{}{"user_id": sess.UserID, "name": sess.FullName, "role": sess.Role}

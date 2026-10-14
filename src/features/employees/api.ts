@@ -128,15 +128,23 @@ export interface EmployeeUpdateInput extends Partial<EmployeeInput> {
 }
 
 export function useUpdateEmployee() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: EmployeeUpdateInput) =>
       api.patch<Employee>("/employees/" + id, input),
+    // Sans ça, l'écran garderait les anciennes valeurs après modification
+    // ou (dés)activation (ligne 186 : la liste est requêtée sans refetch).
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ["employees"] }),
   });
 }
 
 export function useResetEmployeePassword() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       api.post<EmployeeCreated>(`/employees/${id}/reset-password`),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ["employees"] }),
   });
 }

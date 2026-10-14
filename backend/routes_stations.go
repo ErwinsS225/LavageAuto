@@ -18,9 +18,13 @@ import (
 // UsagesForm, VehiculesForm…) écrit ici, et toute relecture repart de la base.
 
 func (a *App) enregistrerRoutesStations(rt *routeur) {
-	rt.ajouter("GET", "/api/v1/stations", a.listerStations)            // station:view
-	rt.ajouter("POST", "/api/v1/stations", a.creerStation)              // organization:manage
-	rt.proteger("GET", "/api/v1/stations/", "", a.dispatchStation)      // contrôle fin dans le dispatch
+	rt.ajouter("GET", "/api/v1/stations", a.listerStations) // station:view
+	rt.ajouter("POST", "/api/v1/stations", a.creerStation)  // organization:manage
+	// Le dispatch de sous-arbre est enregistré pour chaque méthode qu'il
+	// traite : le routeur n'a pas de route « toutes méthodes ».
+	rt.proteger("GET", "/api/v1/stations/", "", a.dispatchStation)
+	rt.proteger("PATCH", "/api/v1/stations/", "", a.dispatchStation)
+	rt.proteger("PUT", "/api/v1/stations/", "", a.dispatchStation)
 }
 
 // dispatchStation route /stations/{id}, /stations/{id}/profile,
@@ -87,28 +91,28 @@ func (a *App) listerStations(w http.ResponseWriter, r *http.Request, sess *sessi
 // --- Création ---------------------------------------------------------------
 
 type corpsStation struct {
-	Name                string   `json:"name"`
-	Code                string   `json:"code"`
-	Phone               string   `json:"phone"`
-	Address             string   `json:"address"`
-	City                string   `json:"city"`
-	Commune             string   `json:"commune"`
-	DistrictArea        string   `json:"district_area"`
-	Timezone            string   `json:"timezone"`
-	Bays                *int     `json:"bays"`
-	WaterSource         string   `json:"water_source"`
-	WaterReserveLiters  *int     `json:"water_reserve_liters"`
-	WashTypes           []string `json:"wash_types"`
-	Latitude            string   `json:"latitude"`
-	Longitude           string   `json:"longitude"`
+	Name               string   `json:"name"`
+	Code               string   `json:"code"`
+	Phone              string   `json:"phone"`
+	Address            string   `json:"address"`
+	City               string   `json:"city"`
+	Commune            string   `json:"commune"`
+	DistrictArea       string   `json:"district_area"`
+	Timezone           string   `json:"timezone"`
+	Bays               *int     `json:"bays"`
+	WaterSource        string   `json:"water_source"`
+	WaterReserveLiters *int     `json:"water_reserve_liters"`
+	WashTypes          []string `json:"wash_types"`
+	Latitude           string   `json:"latitude"`
+	Longitude          string   `json:"longitude"`
 }
 
 var typesLavageConnus = map[string]string{
-	"exterieur": "Lavage extérieur",
-	"interieur": "Nettoyage intérieur",
-	"complet":   "Lavage complet",
-	"special":   "Traitements spéciaux",
-	"aspiration":"Aspiration seule",
+	"exterieur":  "Lavage extérieur",
+	"interieur":  "Nettoyage intérieur",
+	"complet":    "Lavage complet",
+	"special":    "Traitements spéciaux",
+	"aspiration": "Aspiration seule",
 }
 
 var sourcesEauConnues = map[string]bool{
@@ -540,11 +544,11 @@ func (a *App) profilStation(w http.ResponseWriter, r *http.Request, sess *sessio
 	}
 	site := sitePourRendu(station.Site)
 	ecrireJSON(w, http.StatusOK, map[string]interface{}{
-		"station":                 rendreAvecHeures(ctx, station),
-		"site":                    site,
-		"days":                    jours,
-		"exceptions":              exceptions,
-		"types_lavage_proposes":   typesProposes,
+		"station":               rendreAvecHeures(ctx, station),
+		"site":                  site,
+		"days":                  jours,
+		"exceptions":            exceptions,
+		"types_lavage_proposes": typesProposes,
 	})
 }
 
@@ -583,14 +587,14 @@ func sitePourRendu(site map[string]interface{}) map[string]interface{} {
 }
 
 type ligneJour struct {
-	Weekday       int    `json:"weekday"`
-	IsOpen        bool   `json:"is_open"`
-	OpensAt       string `json:"opens_at"`
-	ClosesAt      string `json:"closes_at"`
-	BreakStart    string `json:"break_start"`
-	BreakEnd      string `json:"break_end"`
-	LastCheckinAt string `json:"last_checkin_at"`
-	BookingAllowed bool  `json:"booking_allowed"`
+	Weekday        int    `json:"weekday"`
+	IsOpen         bool   `json:"is_open"`
+	OpensAt        string `json:"opens_at"`
+	ClosesAt       string `json:"closes_at"`
+	BreakStart     string `json:"break_start"`
+	BreakEnd       string `json:"break_end"`
+	LastCheckinAt  string `json:"last_checkin_at"`
+	BookingAllowed bool   `json:"booking_allowed"`
 }
 
 // lireSemaine renvoie toujours sept lignes : un jour non décrit est fermé.
@@ -658,22 +662,22 @@ func (a *App) hoursMapPourRendu(ctx context.Context, stationID string) map[strin
 var nomsJours = []string{"lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"}
 
 type saisieJour struct {
-	Weekday        int     `json:"weekday"`
-	IsOpen         *bool   `json:"is_open"`
-	OpensAt        string  `json:"opens_at"`
-	ClosesAt       string  `json:"closes_at"`
-	BreakStart     string  `json:"break_start"`
-	BreakEnd       string  `json:"break_end"`
-	LastCheckinAt  string  `json:"last_checkin_at"`
-	BookingAllowed *bool   `json:"booking_allowed"`
+	Weekday        int    `json:"weekday"`
+	IsOpen         *bool  `json:"is_open"`
+	OpensAt        string `json:"opens_at"`
+	ClosesAt       string `json:"closes_at"`
+	BreakStart     string `json:"break_start"`
+	BreakEnd       string `json:"break_end"`
+	LastCheckinAt  string `json:"last_checkin_at"`
+	BookingAllowed *bool  `json:"booking_allowed"`
 }
 
 type saisieException struct {
-	Day     string `json:"day"`
-	IsOpen  *bool  `json:"is_open"`
-	OpensAt string `json:"opens_at"`
+	Day      string `json:"day"`
+	IsOpen   *bool  `json:"is_open"`
+	OpensAt  string `json:"opens_at"`
 	ClosesAt string `json:"closes_at"`
-	Label   string `json:"label"`
+	Label    string `json:"label"`
 }
 
 func (a *App) enregistrerHoraires(w http.ResponseWriter, r *http.Request, sess *sessionUtilisateur, station *stationEntite) {
@@ -734,7 +738,7 @@ func (a *App) enregistrerHoraires(w http.ResponseWriter, r *http.Request, sess *
 			champs["jours"] = "Chaque ligne doit porter un weekday entre 1 (lundi) et 7 (dimanche)."
 			continue
 		}
-		if vis :=vus[j.Weekday]; vis {
+		if vis := vus[j.Weekday]; vis {
 			champs[nomsJours[j.Weekday-1]] = "Jour déclaré deux fois."
 			continue
 		}

@@ -23,7 +23,7 @@ import { join } from 'node:path'
 
 const SOURCE = 'src'
 const APP = 'src/App.tsx'
-const MATRICE = 'backend/app.go'
+const MATRICE = 'backend/auth.go'
 
 const problemes = []
 const avertissements = []

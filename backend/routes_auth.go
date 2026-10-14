@@ -377,7 +377,7 @@ func (a *App) deconnecter(w http.ResponseWriter, r *http.Request, _ *sessionUtil
 
 // webSession : petite coquille pour récupérer le jeton posé par creerSession.
 type webSession struct {
-	app    *App
+	app     *App
 	dernier string
 }
 
@@ -491,7 +491,7 @@ func (a *App) lireOrganisation(ctx context.Context, id string) (map[string]inter
 }
 
 func (a *App) lireAbonnement(ctx context.Context, organizationID string) map[string]interface{} {
-ligne := a.db.QueryRow(ctx, `
+	ligne := a.db.QueryRow(ctx, `
 		SELECT p.code, p.name, p.description, p.price_xof, p.billing_period, p.max_stations,
 		       p.max_employees, p.max_wash_orders_month, p.features, s.status, s.trial_ends_at,
 		       s.current_period_start, s.current_period_end
@@ -525,10 +525,10 @@ ligne := a.db.QueryRow(ctx, `
 	return map[string]interface{}{
 		"plan_code": code, "plan_name": nom, "plan_description": description,
 		"price_xof": prix, "billing_period": periode, "status": statut,
-		"status_label": statutsLabels[statut],
+		"status_label":  statutsLabels[statut],
 		"trial_ends_at": formate(trialEnds), "current_period_start": formate(periodeDebut),
 		"current_period_end": formate(periodeFin),
-		"max_stations": maxStations, "max_employees": maxEmployes,
+		"max_stations":       maxStations, "max_employees": maxEmployes,
 		"max_wash_orders_month": maxCommandes, "features": decoderObjet(featuresBody),
 		"usage": map[string]interface{}{
 			"period": time.Now().UTC().Format("2006-01"), "wash_orders": usageCommandes,
@@ -536,4 +536,3 @@ ligne := a.db.QueryRow(ctx, `
 		},
 	}
 }
-
