@@ -1,18 +1,42 @@
 /**
  * Écran de mise en route (/onboarding).
  *
- * Un assistant, pas une liste de liens : chaque étape ouvre le formulaire qui
- * l'alimente, et l'enregistrement écrit réellement dans la base de l'entreprise.
- * Ce qui décide qu'une étape est terminée reste le serveur — il recalcule tout à
- * partir des données (station active, téléphone, horaires décrits, prestations
- * tarifées), jamais d'un clic sur « Terminer ».
+ * Refonte complète basée sur le composant @blocks-so/onboarding-02 :
+ *  - Indicateurs circulaires avec icône de coche émeraude (IconCircleCheckFilled)
+ *  - Titres barrés avec typographie douce une fois validés
+ *  - Barres de progression dynamique en émeraude
+ *  - Cartes d'étapes interactives avec accordéon inline pour chaque formulaire
+ *  - Détection automatique et passage à l'étape suivante après enregistrement
+ *  - Validation serveur et activation finale avec IconRocket
  */
-import { ArrowRight, CheckCircle2, Circle, Rocket, UserPlus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import type { Icon } from '@tabler/icons-react'
+import {
+  IconArrowRight,
+  IconBriefcase,
+  IconBuilding,
+  IconBuildingStore,
+  IconCar,
+  IconChevronDown,
+  IconChevronUp,
+  IconCircleCheckFilled,
+  IconClock,
+  IconCoins,
+  IconCreditCard,
+  IconFilter,
+  IconMapPin,
+  IconRocket,
+  IconShieldCheck,
+  IconSparkles,
+  IconTag,
+  IconTool,
+  IconUserPlus,
+  IconUsers,
+} from '@tabler/icons-react'
 
-import { Badge, Button, Card, CardHeader, PageHeader, Progress, SkeletonRows } from '@/components/ui'
-import { MotionItem, MotionStagger } from '@/components/ui/motion-blocks'
+import { Badge, Button, Card, CardHeader, SkeletonRows } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
 import { useOrganisationDetaillee, useStationProfile } from '@/features/profile/api'
 import { useActivateOnboarding, useOnboarding } from '@/features/onboarding/api'
@@ -32,73 +56,151 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useStation } from '@/hooks/useStation'
 import { ApiError } from '@/lib/api'
-import type { OnboardingStep } from '@/types'
+import { cn } from '@/lib/utils'
 
-const ETIQUETTES: Record<OnboardingStep['state'], { texte: string; ton: 'success' | 'brand' | 'warning' | 'neutral' }> = {
-  completed: { texte: 'Terminée', ton: 'success' },
-  in_progress: { texte: 'En cours', ton: 'brand' },
-  not_started: { texte: 'À faire', ton: 'neutral' },
-  needs_fix: { texte: 'À corriger', ton: 'warning' },
-  blocked: { texte: 'Bloquée', ton: 'warning' },
+/** Association d'une icône Tabler adaptée pour chaque étape du lavage automobile */
+const ICONS_ETAPES: Record<string, Icon> = {
+  espace: IconBuildingStore,
+  entreprise: IconBuilding,
+  station: IconMapPin,
+  horaires: IconClock,
+  vehicules: IconCar,
+  usages: IconBriefcase,
+  prestations: IconSparkles,
+  options: IconTag,
+  tarifs: IconCoins,
+  moyens: IconCreditCard,
+  equipe: IconUsers,
+  materiel: IconTool,
+  commandes: IconShieldCheck,
+}
+
+function getIconColor(isCompleted: boolean, isActive: boolean) {
+  if (isCompleted) {
+    return 'text-emerald-500/80 dark:text-emerald-400/80'
+  }
+  if (isActive) {
+    return 'text-brand'
+  }
+  return 'text-ink-muted/50 dark:text-ink-muted/40'
+}
+
+function getTitleClass(isCompleted: boolean, isActive: boolean) {
+  if (isCompleted) {
+    return 'text-ink-muted/50 dark:text-muted-foreground/50 line-through'
+  }
+  if (isActive) {
+    return 'text-ink dark:text-foreground font-semibold'
+  }
+  return 'text-ink/80 dark:text-foreground/80 font-medium'
+}
+
+function StepIndicator({
+  index,
+  isCompleted,
+  isActive,
+}: {
+  index: number
+  isCompleted: boolean
+  isActive: boolean
+}) {
+  if (isCompleted) {
+    return (
+      <div className="flex size-7 items-center justify-center shrink-0">
+        <IconCircleCheckFilled
+          aria-hidden="true"
+          className="size-7 text-emerald-500 animate-in fade-in zoom-in-75 duration-200"
+        />
+      </div>
+    )
+  }
+  return (
+    <div
+      className={cn(
+        'flex size-7 items-center justify-center rounded-full font-semibold text-xs shrink-0 transition-colors',
+        isActive
+          ? 'bg-brand text-brand-ink shadow-e1 ring-2 ring-brand/30'
+          : 'bg-surface-muted text-ink-muted border border-line'
+      )}
+    >
+      {index + 1}
+    </div>
+  )
 }
 
 export default function OnboardingPage() {
   const navigate = useNavigate()
   const toast = useToast()
-  usePageTitle('Mise en route')
+  usePageTitle('Mise en route de votre station')
   const { can, me } = useAuth()
   const { stationId, stations } = useStation()
 
   const { data, isError, error, refetch } = useOnboarding(can('settings:view'), me?.onboarding ?? null)
   const activation = useActivateOnboarding()
-  const [etapeActive, setEtapeActive] = useState('')
+
+  const [etapeOuverte, setEtapeOuverte] = useState<string>('')
+  const [filtre, setFiltre] = useState<'tous' | 'obligatoires' | 'a_faire'>('tous')
 
   const etapes = data?.steps ?? []
-  const pourcent = data?.progress.percent ?? 0
-  const peutActiver = can('organization:manage')
   const stationCourante = stationId || stations[0]?.id || ''
-
-  // L'étape affichée : la première non satisfaite, sauf choix explicite.
-  const premiereARemplir = useMemo(
-    () => etapes.find((etape) => !etape.done && etape.form)?.code ?? etapes[0]?.code ?? '',
-    [etapes],
-  )
-  useEffect(() => {
-    if (etapeActive) return
-    if (premiereARemplir) setEtapeActive(premiereARemplir)
-  }, [etapeActive, premiereARemplir])
-
-  const etape = etapes.find((item) => item.code === etapeActive)
-  const organisation = useOrganisationDetaillee(can('settings:view') && etape?.form === 'entreprise')
-  // Le profil complet n'est utile qu'aux deux étapes qui décrivent le lieu ;
-  // les autres lisent leurs propres listes.
-  const profilStation = useStationProfile(
-    stationCourante,
-    Boolean(stationCourante) && (etape?.form === 'station' || etape?.form === 'horaires'),
-  )
-
-  const reste = (data?.missing ?? []).map((item) => item.title)
+  const peutActiver = can('organization:manage')
   const etatActif = data?.state === 'active'
 
-  /** Après un enregistrement : on rafraîchit l'état et on propose la suite. */
+  // Première étape non satisfaite par défaut
+  const premiereARemplir = useMemo(
+    () => etapes.find((e) => !e.done && e.form)?.code ?? etapes[0]?.code ?? '',
+    [etapes],
+  )
+
+  useEffect(() => {
+    if (!etapeOuverte && premiereARemplir) {
+      setEtapeOuverte(premiereARemplir)
+    }
+  }, [etapeOuverte, premiereARemplir])
+
+  const etapeActiveData = etapes.find((item) => item.code === etapeOuverte)
+  const organisation = useOrganisationDetaillee(can('settings:view') && etapeActiveData?.form === 'entreprise')
+  const profilStation = useStationProfile(
+    stationCourante,
+    Boolean(stationCourante) && (etapeActiveData?.form === 'station' || etapeActiveData?.form === 'horaires'),
+  )
+
+  // Statistiques de progression
+  const totalEtapes = etapes.length
+  const completedCount = etapes.filter((e) => e.done).length
+  const requiredCount = etapes.filter((e) => e.required).length
+  const requiredDoneCount = etapes.filter((e) => e.required && e.done).length
+  const allRequiredDone = data?.can_activate || (requiredCount > 0 && requiredDoneCount === requiredCount)
+  const pourcent = data?.progress?.percent ?? Math.round((completedCount / (totalEtapes || 1)) * 100)
+
+  // Filtrage des étapes
+  const etapesAffichees = useMemo(() => {
+    if (filtre === 'obligatoires') return etapes.filter((e) => e.required)
+    if (filtre === 'a_faire') return etapes.filter((e) => !e.done)
+    return etapes
+  }, [etapes, filtre])
+
   function apresEnregistrement(code: string) {
     void refetch()
-    const position = etapes.findIndex((item) => item.code === code)
-    const suivante = etapes.slice(position + 1).find((item) => item.form)
-    if (suivante) setEtapeActive(suivante.code)
+    toast.success('Informations enregistrées avec succès !')
+    // Trouver l'étape suivante non terminée
+    const indexActuel = etapes.findIndex((e) => e.code === code)
+    const suivante = etapes.slice(indexActuel + 1).find((e) => !e.done && e.form)
+    if (suivante) {
+      setEtapeOuverte(suivante.code)
+    }
   }
 
   async function activer() {
     try {
       await activation.mutateAsync()
-      toast.success('Station activée. Bonne exploitation !')
+      toast.success('Félicitations ! Votre station de lavage est désormais active et prête pour l’exploitation.')
       navigate('/tableau-de-bord', { replace: true })
     } catch (caught) {
-      // Le serveur est la source de vérité : son refus nomme l'étape manquante.
       const message =
         caught instanceof ApiError
           ? caught.message
-          : "L'activation a échoué. Vérifiez votre connexion puis réessayez."
+          : "L'activation a échoué. Vérifiez vos prérequis puis réessayez."
       toast.error(message)
       void refetch()
     }
@@ -106,236 +208,426 @@ export default function OnboardingPage() {
 
   if (!data) {
     if (isError) {
-      const message =
-        error instanceof Error ? error.message : "L'état de la mise en route n'a pas pu être lu."
+      const message = error instanceof Error ? error.message : "Impossible de charger la mise en route."
       return (
-        <div className="mx-auto w-full max-w-2xl">
+        <div className="mx-auto w-full max-w-xl py-12">
           <Card>
-            <CardHeader title="Mise en route indisponible" subtitle={message} />
-            <Button variant="secondary" onClick={() => void refetch()}>
-              Réessayer
-            </Button>
+            <CardHeader title="Mise en route momentanément indisponible" subtitle={message} />
+            <div className="p-4 pt-0">
+              <Button variant="secondary" onClick={() => void refetch()}>
+                Réessayer
+              </Button>
+            </div>
           </Card>
         </div>
       )
     }
     return (
-      <div className="mx-auto w-full max-w-3xl">
-        <SkeletonRows rows={4} />
+      <div className="mx-auto w-full max-w-xl py-12 space-y-4">
+        <SkeletonRows rows={5} />
       </div>
     )
   }
 
   return (
-    <MotionStagger className="mx-auto w-full max-w-4xl space-y-6">
-      <MotionItem>
-        <PageHeader
-          title="Mise en route de votre station"
-          subtitle="Chaque étape se remplit ici et s'enregistre dans votre espace. Vous ne saisissez que vos propres informations : l'application ne propose ni tarif ni donnée d'exemple."
-        />
-      </MotionItem>
+    <div className="flex min-h-dvh flex-col items-center justify-start py-8 px-4 sm:px-6">
+      <div className="w-full max-w-2xl space-y-6">
 
-      <MotionItem>
-        <Card>
-          <CardHeader
-            title={`Avancement : ${data.progress.done} / ${data.progress.total} étapes obligatoires`}
-            subtitle={
-              etatActif
-                ? 'Station activée : votre espace est en exploitation.'
-                : "L'exploitation s'ouvre à la dernière étape."
-            }
-            actions={<Badge tone={etatActif ? 'success' : 'brand'}>{pourcent} %</Badge>}
-          />
-          <div className="p-4 pt-0">
-            <Progress percent={pourcent} tone={etatActif ? 'success' : 'brand'} />
-          </div>
-        </Card>
-      </MotionItem>
-
-      {/* Navigation entre les étapes : l'état de chacune vient du serveur. */}
-      <MotionItem>
-        <div className="flex flex-wrap gap-2">
-          {etapes.map((item, index) => {
-            const active = item.code === etapeActive
-            return (
-              <button
-                key={item.code}
-                type="button"
-                onClick={() => setEtapeActive(item.code)}
-                className={
-                  'chip flex items-center gap-2 ' + (active ? 'chip-active' : '')
-                }
-                aria-current={active}
-              >
-                {item.done ? (
-                  <CheckCircle2 size={14} className="text-success" aria-hidden />
-                ) : (
-                  <Circle size={14} className="text-ink-subtle" aria-hidden />
-                )}
-                <span className="text-xs">
-                  {index + 1}. {item.title}
+        {/* =========================================================================
+            HEADER DE MISE EN ROUTE (@blocks-so/onboarding-02 style)
+            ========================================================================= */}
+        <div className="rounded-2xl border border-line bg-surface p-6 shadow-e2 transition-colors">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-brand-soft text-brand">
+                  <IconRocket className="size-5" />
                 </span>
-              </button>
+                <h1 className="text-xl font-bold tracking-tight text-ink">
+                  Mise en route de votre station
+                </h1>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+                Configurez pas à pas vos tarifs, vos horaires, vos véhicules et vos moyens de paiement.
+                Chaque étape est enregistrée et validée directement par le système.
+              </p>
+            </div>
+
+            {etatActif ? (
+              <Badge tone="success" dot className="shrink-0">
+                En exploitation
+              </Badge>
+            ) : allRequiredDone ? (
+              <Badge tone="success" dot className="shrink-0 animate-pulse">
+                Prête à activer
+              </Badge>
+            ) : (
+              <Badge tone="brand" dot className="shrink-0">
+                {pourcent} %
+              </Badge>
+            )}
+          </div>
+
+          {/* Barre de progression avec repères chiffrés */}
+          <div className="mt-5 border-t border-line/60 pt-4">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-ink-muted">
+                {allRequiredDone ? (
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <IconCircleCheckFilled className="size-4" />
+                    Toutes les étapes requises sont prêtes 🎉
+                  </span>
+                ) : (
+                  <>
+                    <span className="font-semibold text-ink">
+                      {requiredDoneCount}
+                    </span>{' '}
+                    sur <span className="font-semibold text-ink">{requiredCount}</span> étapes obligatoires complétées
+                  </>
+                )}
+              </span>
+              <span className="font-semibold text-ink">
+                {completedCount} / {totalEtapes} au total
+              </span>
+            </div>
+
+            <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-surface-muted border border-line/50">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-brand to-emerald-500 transition-all duration-500"
+                style={{ width: `${Math.max(4, pourcent)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Filtres rapides */}
+          <div className="mt-4 flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+            <span className="inline-flex items-center gap-1 text-ink-subtle mr-1">
+              <IconFilter className="size-3.5" /> Filtrer :
+            </span>
+            <button
+              type="button"
+              onClick={() => setFiltre('tous')}
+              className={cn(
+                'rounded-lg px-2.5 py-1 font-medium transition-colors',
+                filtre === 'tous'
+                  ? 'bg-brand text-brand-ink shadow-e1'
+                  : 'bg-surface-muted text-ink-muted hover:text-ink'
+              )}
+            >
+              Toutes ({etapes.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltre('obligatoires')}
+              className={cn(
+                'rounded-lg px-2.5 py-1 font-medium transition-colors',
+                filtre === 'obligatoires'
+                  ? 'bg-brand text-brand-ink shadow-e1'
+                  : 'bg-surface-muted text-ink-muted hover:text-ink'
+              )}
+            >
+              Obligatoires ({requiredCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltre('a_faire')}
+              className={cn(
+                'rounded-lg px-2.5 py-1 font-medium transition-colors',
+                filtre === 'a_faire'
+                  ? 'bg-brand text-brand-ink shadow-e1'
+                  : 'bg-surface-muted text-ink-muted hover:text-ink'
+              )}
+            >
+              À compléter ({etapes.filter((e) => !e.done).length})
+            </button>
+          </div>
+        </div>
+
+        {/* =========================================================================
+            LISTE DES CARTES D'ÉTAPES (@blocks-so/onboarding-02 style)
+            ========================================================================= */}
+        <div className="space-y-3">
+          {etapesAffichees.map((step, index) => {
+            const isCompleted = step.done
+            const isOpen = etapeOuverte === step.code
+            const StepIcon = ICONS_ETAPES[step.code] || IconSparkles
+            const absoluteIndex = etapes.findIndex((e) => e.code === step.code)
+
+            return (
+              <div
+                key={step.code}
+                className={cn(
+                  'rounded-xl border transition-all duration-200 overflow-hidden',
+                  isOpen
+                    ? 'border-brand/40 bg-surface shadow-e2 ring-1 ring-brand/20'
+                    : isCompleted
+                      ? 'border-line/70 bg-surface/80 hover:border-line-strong'
+                      : 'border-line bg-surface hover:border-line-strong shadow-e1'
+                )}
+              >
+                {/* En-tête de la carte d'étape */}
+                <div
+                  className="p-4 cursor-pointer select-none"
+                  onClick={() => setEtapeOuverte(isOpen ? '' : step.code)}
+                >
+                  <div className="flex gap-3.5">
+                    {/* Indicateur circulaire (index ou coche verte) */}
+                    <div className="mt-0.5 shrink-0">
+                      <StepIndicator
+                        index={absoluteIndex >= 0 ? absoluteIndex : index}
+                        isActive={isOpen}
+                        isCompleted={isCompleted}
+                      />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className={cn('text-sm leading-6 tracking-tight', getTitleClass(isCompleted, isOpen))}>
+                              {step.title}
+                            </p>
+                            {!step.required && (
+                              <span className="rounded px-1.5 py-0.5 text-[0.6875rem] font-medium bg-surface-muted text-ink-subtle border border-line">
+                                Facultatif
+                              </span>
+                            )}
+                            {step.detail && (
+                              <span className="rounded px-1.5 py-0.5 text-[0.6875rem] font-medium bg-brand-soft text-brand">
+                                {step.detail}
+                              </span>
+                            )}
+                          </div>
+
+                          <p
+                            className={cn(
+                              'mt-0.5 text-xs leading-relaxed',
+                              isOpen
+                                ? 'text-ink-muted'
+                                : isCompleted
+                                  ? 'text-ink-muted/50'
+                                  : 'text-ink-muted/80'
+                            )}
+                          >
+                            {step.description}
+                          </p>
+
+                          {/* Bouton d'action standard si non ouvert */}
+                          {!isOpen && step.form && (
+                            <div className="mt-2.5 flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant={isCompleted ? 'secondary' : 'primary'}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setEtapeOuverte(step.code)
+                                }}
+                              >
+                                <StepIcon aria-hidden="true" className="-ml-0.5 size-3.5 shrink-0" />
+                                {isCompleted ? 'Modifier la saisie' : 'Configurer'}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Icône du domaine et flèche d'expansion */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <StepIcon
+                            aria-hidden="true"
+                            className={cn('size-5 shrink-0 transition-colors', getIconColor(isCompleted, isOpen))}
+                          />
+                          <span className="text-ink-subtle hover:text-ink transition-colors">
+                            {isOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* =====================================================================
+                    FORMULAIRE INLINE DÉPLOYABLE (Accordéon)
+                    ===================================================================== */}
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className="overflow-hidden border-t border-line/70 bg-surface-muted/30"
+                    >
+                      <div className="p-4 sm:p-5 space-y-4">
+                        {step.hint && !isCompleted && (
+                          <div className="rounded-lg border border-warning/30 bg-warning-soft/60 px-3.5 py-2.5 text-xs text-warning leading-relaxed flex items-center gap-2">
+                            <span>💡</span>
+                            <span>{step.hint}</span>
+                          </div>
+                        )}
+
+                        {/* Rendu dynamique du formulaire relié à l'étape */}
+                        {step.form === 'entreprise' && organisation.data && (
+                          <EntrepriseForm
+                            donnees={organisation.data}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'station' && stationCourante && profilStation.data && (
+                          <StationForm
+                            stationId={stationCourante}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'horaires' && stationCourante && (
+                          <HorairesForm
+                            stationId={stationCourante}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'vehicules' && stationCourante && (
+                          <VehiculesForm
+                            stationId={stationCourante}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'usages' && stationCourante && (
+                          <UsagesForm
+                            stationId={stationCourante}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'prestations' && stationCourante && (
+                          <PrestationsForm
+                            stationId={stationCourante}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'options' && stationCourante && (
+                          <OptionsForm
+                            stationId={stationCourante}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'tarifs' && stationCourante && (
+                          <TarifsForm
+                            stationId={stationCourante}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'moyens' && stationCourante && (
+                          <MoyensForm
+                            stationId={stationCourante}
+                            ville={stations.find((item) => item.id === stationCourante)?.city}
+                            onEnregistre={() => apresEnregistrement(step.code)}
+                          />
+                        )}
+                        {step.form === 'equipe' && stationCourante && (
+                          <EquipeForm stationId={stationCourante} />
+                        )}
+                        {step.form === 'materiel' && stationCourante && (
+                          <MaterielForm stationId={stationCourante} />
+                        )}
+                        {step.form === 'commandes' && stationCourante && (
+                          <CommandesForm stationId={stationCourante} />
+                        )}
+
+                        {step.code === 'espace' && (
+                          <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                            <div className="rounded-lg border border-line bg-surface p-3.5">
+                              <p className="font-semibold text-ink">Espace propriétaire créé</p>
+                              <p className="mt-1 text-ink-muted leading-relaxed">
+                                Votre compte a été initialisé en tant que propriétaire. Vous avez le contrôle total sur cette entreprise.
+                              </p>
+                            </div>
+                            <div className="rounded-lg border border-line bg-surface p-3.5">
+                              <p className="font-semibold text-ink">Inviter vos équipes</p>
+                              <p className="mt-1 text-ink-muted leading-relaxed">
+                                Vous pourrez ajouter vos gérants et caissiers dès l’étape Équipe ou depuis le menu Employés.
+                              </p>
+                              <Link
+                                to="/rejoindre"
+                                className="mt-2 inline-flex items-center gap-1 font-medium text-brand hover:underline"
+                              >
+                                <IconUserPlus className="size-3.5" />
+                                Page des invitations
+                              </Link>
+                            </div>
+                          </div>
+                        )}
+
+                        {!step.form && step.code !== 'espace' && (
+                          <div className="rounded-lg border border-line bg-surface p-4 text-xs text-ink-muted">
+                            Cette étape est constatée automatiquement d'après les données de votre compte.
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             )
           })}
         </div>
-      </MotionItem>
 
-      {etape && (
-        <MotionItem>
-          <Card>
-            <CardHeader
-              title={etape.title}
-              subtitle={etape.description}
-              actions={
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={(ETIQUETTES[etape.state] ?? ETIQUETTES.not_started).ton} dot>
-                    {(ETIQUETTES[etape.state] ?? ETIQUETTES.not_started).texte}
-                  </Badge>
-                  {!etape.required && <Badge tone="neutral">Facultatif</Badge>}
-                </div>
-              }
-            />
-            <div className="space-y-4 p-4">
-              {etape.detail ? (
-                <p className="text-sm text-ink-muted">
-                  <span className="font-medium text-ink">Constaté :</span> {etape.detail}
-                </p>
-              ) : null}
-              {!etape.done && etape.hint ? <p className="text-sm text-warning">{etape.hint}</p> : null}
-
-              {/* Le formulaire de l'étape, alimenté par les données réelles. */}
-              {etape.form === 'entreprise' && organisation.data && (
-                <EntrepriseForm
-                  donnees={organisation.data}
-                  onEnregistre={() => apresEnregistrement(etape.code)}
-                />
-              )}
-              {etape.form === 'station' && stationCourante && profilStation.data && (
-                <StationForm stationId={stationCourante} onEnregistre={() => apresEnregistrement(etape.code)} />
-              )}
-              {etape.form === 'horaires' && stationCourante && (
-                <HorairesForm stationId={stationCourante} onEnregistre={() => apresEnregistrement(etape.code)} />
-              )}
-              {etape.form === 'vehicules' && stationCourante && (
-                <VehiculesForm stationId={stationCourante} onEnregistre={() => apresEnregistrement(etape.code)} />
-              )}
-              {etape.form === 'usages' && stationCourante && (
-                <UsagesForm stationId={stationCourante} onEnregistre={() => apresEnregistrement(etape.code)} />
-              )}
-              {etape.form === 'prestations' && stationCourante && (
-                <PrestationsForm stationId={stationCourante} onEnregistre={() => apresEnregistrement(etape.code)} />
-              )}
-              {etape.form === 'options' && stationCourante && (
-                <OptionsForm stationId={stationCourante} onEnregistre={() => apresEnregistrement(etape.code)} />
-              )}
-              {etape.form === 'tarifs' && stationCourante && (
-                <TarifsForm stationId={stationCourante} onEnregistre={() => apresEnregistrement(etape.code)} />
-              )}
-              {etape.form === 'moyens' && stationCourante && (
-                <MoyensForm
-                  stationId={stationCourante}
-                  ville={stations.find((item) => item.id === stationCourante)?.city}
-                  onEnregistre={() => apresEnregistrement(etape.code)}
-                />
-              )}
-              {etape.form === 'equipe' && stationCourante && (
-                <EquipeForm stationId={stationCourante} />
-              )}
-              {etape.form === 'materiel' && stationCourante && (
-                <MaterielForm stationId={stationCourante} />
-              )}
-              {etape.form === 'commandes' && stationCourante && (
-                <CommandesForm stationId={stationCourante} />
-              )}
-              {/* Étape « espace » : rien à saisir, mais deux chemins possibles.
-                  Celui de l'invitation n'est pas dans ce parcours — il se vit
-                  depuis un lien reçu, avant même d'avoir un compte. */}
-              {etape.code === 'espace' && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-field border border-line bg-surface-muted/60 px-4 py-3">
-                    <p className="text-sm font-medium text-ink">Créer mon entreprise</p>
-                    <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-                      C'est ce que vous venez de faire : votre compte est <strong>propriétaire</strong> de
-                      cette entreprise. Il n'y a pas de second propriétaire à nommer.
-                    </p>
-                  </div>
-                  <div className="rounded-field border border-line px-4 py-3">
-                    <p className="text-sm font-medium text-ink">Rejoindre une entreprise existante</p>
-                    <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-                      Se fait avec une invitation, avant la création du compte — le vôtre est déjà créé.
-                      Vous pouvez néanmoins ouvrir la page pour vérifier une invitation reçue.
-                    </p>
-                    <Link
-                      to="/rejoindre"
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
-                    >
-                      <UserPlus size={14} aria-hidden />
-                      J'ai reçu une invitation
-                    </Link>
-                  </div>
-                </div>
-              )}
-
-              {!etape.form && etape.code !== 'espace' && (
-                <p className="text-sm text-ink-muted">
-                  Cette étape n'a rien à saisir : elle est constatée sur ce qui existe déjà.
-                </p>
-              )}
+        {/* =========================================================================
+            SECTION D'ACTIVATION FINALE
+            ========================================================================= */}
+        <div className="rounded-2xl border border-line bg-surface p-6 shadow-e2 transition-colors">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-ink flex items-center gap-2">
+                <IconRocket className="size-5 text-brand" />
+                {etatActif ? 'Station en cours d’exploitation' : 'Activer l’exploitation de la station'}
+              </h3>
+              <p className="text-xs text-ink-muted leading-relaxed max-w-lg">
+                {etatActif
+                  ? 'Votre station est active. Vous pouvez créer des fiches, encaisser et suivre votre caisse.'
+                  : allRequiredDone
+                    ? 'Toutes les étapes obligatoires sont prêtes ! Vous pouvez lancer l’exploitation immédiatement.'
+                    : `Il reste des étapes obligatoires à compléter avant l'activation (${requiredDoneCount}/${requiredCount}).`}
+              </p>
             </div>
-          </Card>
-        </MotionItem>
-      )}
 
-      <MotionItem>
-        <Card>
-          <CardHeader
-            title={etatActif ? 'Espace en exploitation' : 'Activer la station'}
-            subtitle={
-              etatActif
-                ? 'Vous pouvez encaisser, enregistrer des lavages et suivre votre activité.'
-                : reste.length > 0
-                  ? `Il reste : ${reste.join(', ')}.`
-                  : 'Toutes les étapes obligatoires sont satisfaites : vous pouvez activer.'
-            }
-          />
-          <div className="space-y-3 p-4 pt-0">
-            {etatActif ? (
-              <Button variant="primary" icon={<ArrowRight size={15} />} onClick={() => navigate('/tableau-de-bord')}>
-                Aller au tableau de bord
-              </Button>
-            ) : (
-              <>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+              {etatActif ? (
                 <Button
                   variant="primary"
-                  icon={<Rocket size={15} />}
-                  loading={activation.isPending}
-                  disabled={!data.can_activate || !peutActiver}
-                  onClick={() => void activer()}
+                  onClick={() => navigate('/tableau-de-bord')}
+                  className="w-full sm:w-auto"
                 >
+                  Accéder au tableau de bord
+                  <IconArrowRight className="size-4 ml-1" />
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  loading={activation.isPending}
+                  disabled={!allRequiredDone || !peutActiver}
+                  onClick={() => void activer()}
+                  className="w-full sm:w-auto shadow-e2"
+                >
+                  <IconRocket className="size-4 -ml-0.5" />
                   Activer ma station
                 </Button>
-                {!peutActiver && (
-                  <p className="text-sm text-ink-muted">
-                    Seul le propriétaire du compte peut activer la station.
-                  </p>
-                )}
-                {peutActiver && !data.can_activate && (
-                  <p className="text-sm text-ink-muted">
-                    Le bouton s'active dès que toutes les étapes obligatoires sont satisfaites. L'activation
-                    est revérifiée côté serveur, étape par étape.
-                  </p>
-                )}
-                {/* Le récapitulatif montre tout d'un seul tenant (sections,
-                    étapes, réglages facultatifs restants) avant d'activer. */}
-                <Link to="/mise-en-route/recapitulatif" className="text-sm font-medium text-brand hover:underline">
-                  Voir le récapitulatif complet avant d'activer
-                </Link>
-              </>
-            )}
+              )}
+            </div>
           </div>
-        </Card>
-      </MotionItem>
-    </MotionStagger>
+
+          <div className="mt-4 pt-4 border-t border-line/60 flex items-center justify-between text-xs text-ink-muted">
+            <span>
+              Besoin de vérifier l'ensemble des données ?
+            </span>
+            <Link
+              to="/mise-en-route/recapitulatif"
+              className="font-medium text-brand hover:underline inline-flex items-center gap-1"
+            >
+              Voir le récapitulatif complet
+              <IconArrowRight className="size-3" />
+            </Link>
+          </div>
+        </div>
+
+      </div>
+    </div>
   )
 }

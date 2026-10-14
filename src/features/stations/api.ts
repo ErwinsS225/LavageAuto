@@ -27,6 +27,34 @@ export interface StationUpdateInput {
   settings?: Partial<Station["settings"]>;
 }
 
+export interface StationCreateInput {
+  name: string
+  code?: string
+  phone?: string
+  address?: string
+  city?: string
+  commune?: string
+  district_area?: string
+  timezone?: string
+  bays?: number
+  water_source?: string
+  water_reserve_liters?: number
+  wash_types?: string[]
+}
+
+export function useCreateStation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: StationCreateInput) => api.post<Station>('/stations', input),
+    onSuccess: (station) => {
+      void queryClient.invalidateQueries({ queryKey: ['stations'] })
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
+      void queryClient.invalidateQueries({ queryKey: ['onboarding'] })
+      return station
+    },
+  })
+}
+
 export function useUpdateStation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -38,3 +66,4 @@ export function useUpdateStation() {
     },
   });
 }
+

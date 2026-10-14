@@ -68,8 +68,116 @@ interface Organization {
   timezone: string
   logo_url: string
   status: 'active' | 'suspended' | 'archived'
+  legal_name?: string
+  trade_name?: string
+  activity_type?: string
+  activity_description?: string
+  activity_started_on?: string
+  whatsapp?: string
+  website?: string
+  billing_name?: string
+  billing_address?: string
+  billing_email?: string
+  billing_phone?: string
+  legal_form?: string
+  legal_representative?: string
+  rccm?: string
+  tax_id?: string
+  cnps_employer_number?: string
+  fiscal_regime?: string
+  legal_mentions?: string
   notes?: string
   created_at: string
+}
+
+interface StationSite {
+  wash_types: string[]
+  bays: number | null
+  simultaneous_vehicles: number | null
+  has_vacuum: boolean | null
+  has_drying: boolean | null
+  has_detailing: boolean | null
+  has_waiting_room: boolean | null
+  has_storage: boolean | null
+  water_source: string
+  water_reserve_liters: number | null
+  power_supply: string
+  has_generator: boolean | null
+  notes: string
+  constraints: string
+}
+
+interface OpeningHourDay {
+  weekday: number
+  is_open: boolean
+  opens_at: string
+  closes_at: string
+  break_start: string
+  break_end: string
+  last_checkin_at: string
+  booking_allowed: boolean
+}
+
+interface OpeningExceptionItem {
+  id?: string
+  day: string
+  is_open: boolean
+  opens_at: string
+  closes_at: string
+  label: string
+}
+
+interface DeclaredPaymentMethod {
+  id: string
+  station_id?: string
+  code: string
+  name: string
+  family?: string
+  family_label?: string
+  requires_reference: boolean
+  is_active: boolean
+  sort_order: number
+  kind?: string
+}
+
+interface StationOrderRules {
+  allow_walk_in: boolean
+  require_washer: boolean
+  quality_check_required: boolean
+  release_requires_payment: boolean
+  allow_partial_payments: boolean
+  require_cancel_reason: boolean
+  max_open_orders_per_washer: number
+}
+
+interface PriceRule {
+  id: string
+  station_id: string
+  service_id: string
+  category_code?: string
+  usage_code?: string
+  customer_id?: string
+  customer_name?: string
+  price_xof?: number
+  valid_from?: string
+  valid_to?: string
+  reason: string
+  is_active: boolean
+  created_at: string
+}
+
+interface ServiceOption {
+  id: string
+  station_id: string
+  service_id?: string
+  category_code?: string
+  name: string
+  description: string
+  price_xof: number
+  duration_minutes: number
+  sort_order: number
+  is_active: boolean
+  scope?: 'station' | 'prestation' | 'vehicule'
 }
 
 interface Station {
@@ -80,10 +188,27 @@ interface Station {
   phone: string
   address: string
   city: string
+  country?: string
+  district?: string
+  commune?: string
+  district_area?: string
+  street?: string
+  landmark?: string
+  latitude?: string
+  longitude?: string
+  billing_address?: string
   timezone: string
   currency: string
   logo_url: string
   opening_hours: Record<string, { ouverture: string; fermeture: string; ferme?: boolean }>
+  site?: StationSite
+  opening_hours_days?: OpeningHourDay[]
+  opening_exceptions?: OpeningExceptionItem[]
+  payment_methods?: DeclaredPaymentMethod[]
+  order_rules?: StationOrderRules
+  vehicle_categories?: Array<{ code: string; is_active: boolean; name?: string; local_name?: string; sort_order?: number }>
+  vehicle_usages?: Array<{ code: string; is_active: boolean; name?: string; sort_order?: number }>
+  usage_categories?: Array<{ usage_code: string; category_code: string; is_active?: boolean }>
   settings: {
     max_cashier_discount_xof?: number
     require_open_cash_session?: boolean
@@ -112,10 +237,13 @@ interface Subscription {
 
 interface VehicleCategory {
   id: string
+  code?: string
   name: string
   description: string
   sort_order: number
   is_active: boolean
+  family?: string
+  aliases?: string[]
 }
 
 interface Service {
@@ -195,7 +323,7 @@ interface WashOrder {
   plate: string
   employee_id?: string
   employee_name: string
-  status: 'pending' | 'in_progress' | 'completed' | 'canceled'
+  status: 'pending' | 'in_progress' | 'quality_check' | 'ready' | 'completed' | 'canceled'
   subtotal_xof: number
   discount_xof: number
   discount_reason: string
@@ -353,9 +481,112 @@ const organizations: Organization[] = [
     timezone: 'Africa/Abidjan',
     logo_url: '',
     status: 'active',
+    legal_name: 'Station Étoile SARL',
+    trade_name: 'Station Étoile Lavage Auto',
+    activity_type: 'Station de lavage et entretien automobile',
+    activity_description: 'Lavage express, nettoyage intérieur et entretien complet.',
+    activity_started_on: '2024-01-15',
+    whatsapp: '+225 07 07 12 34 56',
+    website: 'https://washguard.ci',
+    rccm: 'CI-ABJ-2024-B-1234',
+    tax_id: '987654321A',
+    legal_form: 'SARL',
+    fiscal_regime: 'Régime réel simplifié',
     created_at: new Date(Date.now() - 45 * 86400000).toISOString(),
   },
 ]
+
+function getDefaultStationSite(stationName?: string): StationSite {
+  return {
+    wash_types: ['manuel', 'haute_pression', 'mousse_active'],
+    bays: 4,
+    simultaneous_vehicles: 4,
+    has_vacuum: true,
+    has_drying: true,
+    has_detailing: false,
+    has_waiting_room: true,
+    has_storage: true,
+    water_source: 'Raccordement SODECI + Cuve tampon',
+    water_reserve_liters: 5000,
+    power_supply: 'Réseau CIE triphasé 380V',
+    has_generator: true,
+    notes: stationName ? `Station ${stationName} prête pour l’exploitation.` : 'Station moderne de grande capacité.',
+    constraints: 'Alimentation continue avec surpresseur automatique.',
+  }
+}
+
+function getDefaultOpeningDays(): OpeningHourDay[] {
+  return [
+    { weekday: 1, is_open: true, opens_at: '07:30', closes_at: '19:30', break_start: '', break_end: '', last_checkin_at: '19:00', booking_allowed: false },
+    { weekday: 2, is_open: true, opens_at: '07:30', closes_at: '19:30', break_start: '', break_end: '', last_checkin_at: '19:00', booking_allowed: false },
+    { weekday: 3, is_open: true, opens_at: '07:30', closes_at: '19:30', break_start: '', break_end: '', last_checkin_at: '19:00', booking_allowed: false },
+    { weekday: 4, is_open: true, opens_at: '07:30', closes_at: '19:30', break_start: '', break_end: '', last_checkin_at: '19:00', booking_allowed: false },
+    { weekday: 5, is_open: true, opens_at: '07:30', closes_at: '20:00', break_start: '', break_end: '', last_checkin_at: '19:30', booking_allowed: false },
+    { weekday: 6, is_open: true, opens_at: '07:30', closes_at: '20:00', break_start: '', break_end: '', last_checkin_at: '19:30', booking_allowed: false },
+    { weekday: 7, is_open: true, opens_at: '08:00', closes_at: '18:00', break_start: '', break_end: '', last_checkin_at: '17:30', booking_allowed: false },
+  ]
+}
+
+function getDefaultPaymentMethods(stId?: string): DeclaredPaymentMethod[] {
+  return [
+    { id: `pm-${stId || 'def'}-1`, station_id: stId, code: 'especes', name: 'Espèces (Caisse)', family: 'cash', family_label: 'Espèces', requires_reference: false, is_active: true, sort_order: 10, kind: 'modele' },
+    { id: `pm-${stId || 'def'}-2`, station_id: stId, code: 'wave', name: 'Wave Mobile Money', family: 'mobile_money', family_label: 'Mobile Money', requires_reference: true, is_active: true, sort_order: 20, kind: 'modele' },
+    { id: `pm-${stId || 'def'}-3`, station_id: stId, code: 'orange_money', name: 'Orange Money', family: 'mobile_money', family_label: 'Mobile Money', requires_reference: true, is_active: true, sort_order: 30, kind: 'modele' },
+    { id: `pm-${stId || 'def'}-4`, station_id: stId, code: 'mtn_momo', name: 'MTN Mobile Money', family: 'mobile_money', family_label: 'Mobile Money', requires_reference: true, is_active: true, sort_order: 40, kind: 'modele' },
+    { id: `pm-${stId || 'def'}-5`, station_id: stId, code: 'carte', name: 'Carte Bancaire / TPE', family: 'card', family_label: 'Carte bancaire', requires_reference: true, is_active: true, sort_order: 50, kind: 'modele' },
+  ]
+}
+
+function getDefaultOrderRules(): StationOrderRules {
+  return {
+    allow_walk_in: true,
+    require_washer: true,
+    quality_check_required: false,
+    release_requires_payment: true,
+    allow_partial_payments: false,
+    require_cancel_reason: true,
+    max_open_orders_per_washer: 3,
+  }
+}
+
+function getDefaultVehicleCategories(): Array<{ code: string; is_active: boolean; name: string; local_name?: string; sort_order: number }> {
+  return [
+    { code: 'moto', is_active: true, name: 'Moto & Tricycle', sort_order: 10 },
+    { code: 'citadine', is_active: true, name: 'Citadine', sort_order: 20 },
+    { code: 'berline', is_active: true, name: 'Berline', sort_order: 30 },
+    { code: 'suv_4x4', is_active: true, name: '4x4 / SUV', sort_order: 40 },
+    { code: 'utilitaire', is_active: true, name: 'Camionnette / Utilitaire', sort_order: 50 },
+    { code: 'minibus', is_active: true, name: 'Minibus / Gbaka', sort_order: 60 },
+  ]
+}
+
+function getDefaultVehicleUsages(): Array<{ code: string; is_active: boolean; name: string; sort_order: number }> {
+  return [
+    { code: 'particulier', is_active: true, name: 'Particulier', sort_order: 10 },
+    { code: 'taxi_compteur', is_active: true, name: 'Taxi compteur', sort_order: 20 },
+    { code: 'vtc', is_active: true, name: 'VTC (Yango / Uber)', sort_order: 30 },
+    { code: 'flotte', is_active: true, name: 'Flotte d’entreprise', sort_order: 40 },
+    { code: 'livraison', is_active: true, name: 'Livraison express', sort_order: 50 },
+  ]
+}
+
+function getDefaultUsageCategories(): Array<{ usage_code: string; category_code: string; is_active: boolean }> {
+  return [
+    { usage_code: 'particulier', category_code: 'citadine', is_active: true },
+    { usage_code: 'particulier', category_code: 'berline', is_active: true },
+    { usage_code: 'particulier', category_code: 'suv_4x4', is_active: true },
+    { usage_code: 'particulier', category_code: 'moto', is_active: true },
+    { usage_code: 'taxi_compteur', category_code: 'berline', is_active: true },
+    { usage_code: 'taxi_compteur', category_code: 'citadine', is_active: true },
+    { usage_code: 'vtc', category_code: 'berline', is_active: true },
+    { usage_code: 'vtc', category_code: 'suv_4x4', is_active: true },
+    { usage_code: 'flotte', category_code: 'berline', is_active: true },
+    { usage_code: 'flotte', category_code: 'suv_4x4', is_active: true },
+    { usage_code: 'flotte', category_code: 'utilitaire', is_active: true },
+    { usage_code: 'livraison', category_code: 'utilitaire', is_active: true },
+    { usage_code: 'livraison', category_code: 'moto', is_active: true },
+  ]
+}
 
 const stations: Station[] = [
   {
@@ -366,14 +597,34 @@ const stations: Station[] = [
     phone: '+225 07 07 12 34 56',
     address: 'Boulevard Principal, Yopougon',
     city: 'Abidjan',
+    country: "Côte d'Ivoire",
+    district: 'Abidjan',
+    commune: 'Yopougon',
+    district_area: 'Siporex / Bel Air',
+    street: 'Boulevard Principal, face Pharmacie Siporex',
+    landmark: 'En face de la pharmacie Siporex',
+    latitude: '5.3489',
+    longitude: '-4.0823',
+    billing_address: '01 BP 4589 Abidjan 01',
     timezone: 'Africa/Abidjan',
     currency: 'XOF',
     logo_url: '',
     opening_hours: {},
+    site: getDefaultStationSite('Station Étoile — Yopougon'),
+    opening_hours_days: getDefaultOpeningDays(),
+    opening_exceptions: [],
+    payment_methods: getDefaultPaymentMethods('station-yop'),
+    order_rules: getDefaultOrderRules(),
+    vehicle_categories: getDefaultVehicleCategories(),
+    vehicle_usages: getDefaultVehicleUsages(),
+    usage_categories: getDefaultUsageCategories(),
     settings: {
       commission_mode: 'per_wash',
       commission_per_wash_xof: 500,
       monthly_goal_xof: 1500000,
+      require_open_cash_session: true,
+      max_cashier_discount_xof: 1000,
+      receipt_footer: 'Merci de votre confiance. À très bientôt chez Station Étoile !',
     },
     is_default: true,
     is_active: true,
@@ -462,12 +713,19 @@ const users: User[] = [
 ]
 
 const vehicleCategories: VehicleCategory[] = [
-  { id: 'cat-moto', name: 'Moto', description: 'Deux-roues, tricycle', sort_order: 1, is_active: true },
-  { id: 'cat-voiture', name: 'Voiture', description: 'Berline, citadine, SUV', sort_order: 2, is_active: true },
-  { id: 'cat-4x4', name: '4x4 / Pick-up', description: 'Véhicule haut ou tout-terrain', sort_order: 3, is_active: true },
-  { id: 'cat-camionnette', name: 'Camionnette', description: 'Fourgon, utilitaire léger', sort_order: 4, is_active: true },
-  { id: 'cat-minibus', name: 'Minibus', description: 'Transport de personnes', sort_order: 5, is_active: true },
-  { id: 'cat-poids-lourd', name: 'Poids lourd', description: 'Camion, benne', sort_order: 6, is_active: true },
+  { id: 'cat-moto', code: 'moto', name: 'Moto', description: 'Deux-roues, tricycle', sort_order: 1, is_active: true },
+  { id: 'cat-voiture', code: 'voiture', name: 'Voiture', description: 'Berline, citadine, SUV', sort_order: 2, is_active: true },
+  { id: 'cat-4x4', code: '4x4', name: '4x4 / Pick-up', description: 'Véhicule haut ou tout-terrain', sort_order: 3, is_active: true },
+  { id: 'cat-camionnette', code: 'camionnette', name: 'Camionnette', description: 'Fourgon, utilitaire léger', sort_order: 4, is_active: true },
+  { id: 'cat-minibus', code: 'minibus', name: 'Minibus', description: 'Transport de personnes', sort_order: 5, is_active: true },
+  { id: 'cat-poids-lourd', code: 'poids_lourd', name: 'Poids lourd', description: 'Camion, benne', sort_order: 6, is_active: true },
+]
+
+const vehicleUsages = [
+  { id: 'use-particulier', code: 'particulier', name: 'Particulier', description: 'Usage privé courant', sort_order: 1, is_active: true },
+  { id: 'use-taxi', code: 'taxi_compteur', name: 'Taxi compteur', description: 'Transport urbain', sort_order: 2, is_active: true },
+  { id: 'use-vtc', code: 'vtc', name: 'VTC / Flotte', description: 'Chauffeur VTC ou véhicule professionnel', sort_order: 3, is_active: true },
+  { id: 'use-livraison', code: 'livraison', name: 'Livraison', description: 'Véhicule de distribution', sort_order: 4, is_active: true },
 ]
 
 const services: Service[] = [
@@ -489,12 +747,42 @@ const customers: Customer[] = [
   { id: 'cust-3', organization_id: 'org-demo', station_id: 'station-yop', full_name: 'Yao Bamba', phone: '+225 01 34 56 78 90', plate: 'JK 9012 LM', vehicle_model: 'Hyundai Tucson', notes: 'Entreprise VTC', is_active: true, created_at: new Date(Date.now() - 35 * 86400000).toISOString() },
   { id: 'cust-4', organization_id: 'org-demo', station_id: 'station-yop', full_name: 'Fatou Diallo', phone: '+225 07 45 67 89 01', plate: 'NP 3456 RS', vehicle_model: 'Nissan Almera', notes: '', is_active: true, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
   { id: 'cust-5', organization_id: 'org-demo', station_id: 'station-yop', full_name: 'Serge Kouassi', phone: '+225 05 56 78 90 12', plate: 'TU 7890 VW', vehicle_model: 'Toyota Hilux', notes: 'Paiement Wave habituel', is_active: true, created_at: new Date(Date.now() - 28 * 86400000).toISOString() },
-  { id: 'cust-6', organization_id: 'org-demo', station_id: 'station-yop', full_name: 'Awa Ouattara', phone: '+225 01 67 89 01 23', plate: 'XY 1234 ZA', vehicle_model: 'Suzuki Swift', notes: '', is_active: true, created_at: new Date(Date.now() - 25 * 86400000).toISOString() },
-  { id: 'cust-7', organization_id: 'org-demo', station_id: 'station-yop', full_name: 'Ibrahim N\'Guessan', phone: '+225 07 78 90 12 34', plate: 'BC 5678 DE', vehicle_model: 'Peugeot 3008', notes: '', is_active: true, created_at: new Date(Date.now() - 20 * 86400000).toISOString() },
-  { id: 'cust-8', organization_id: 'org-demo', station_id: 'station-yop', full_name: 'Mariam Sanogo', phone: '+225 05 89 01 23 45', plate: 'FG 9012 HJ', vehicle_model: 'Kia Picanto', notes: '', is_active: true, created_at: new Date(Date.now() - 15 * 86400000).toISOString() },
-  { id: 'cust-9', organization_id: 'org-demo', station_id: 'station-yop', full_name: 'Éric Doumbia', phone: '+225 01 90 12 34 56', plate: 'KL 3456 MN', vehicle_model: 'Yamaha 125', notes: 'Livreur', is_active: true, created_at: new Date(Date.now() - 10 * 86400000).toISOString() },
-  { id: 'cust-10', organization_id: 'org-demo', station_id: 'station-yop', full_name: 'Nadège Zadi', phone: '+225 07 01 23 45 67', plate: 'PR 7890 ST', vehicle_model: 'Bajaj Boxer', notes: '', is_active: true, created_at: new Date(Date.now() - 5 * 86400000).toISOString() },
 ]
+
+const paymentMethodsDeclared = [
+  { id: 'pm-cash', code: 'especes', name: 'Espèces (Caisse)', family: 'cash', family_label: 'Espèces', requires_reference: false, is_active: true, sort_order: 1, kind: 'modele' },
+  { id: 'pm-wave', code: 'wave', name: 'Wave Mobile Money', family: 'mobile_money', family_label: 'Mobile Money', requires_reference: true, is_active: true, sort_order: 2, kind: 'modele' },
+  { id: 'pm-om', code: 'orange_money', name: 'Orange Money', family: 'mobile_money', family_label: 'Mobile Money', requires_reference: true, is_active: true, sort_order: 3, kind: 'modele' },
+  { id: 'pm-mtn', code: 'mtn_momo', name: 'MTN MoMo', family: 'mobile_money', family_label: 'Mobile Money', requires_reference: true, is_active: true, sort_order: 4, kind: 'modele' },
+  { id: 'pm-card', code: 'carte', name: 'Carte Bancaire / TPE', family: 'card', family_label: 'Carte bancaire', requires_reference: true, is_active: true, sort_order: 5, kind: 'modele' },
+]
+
+const invitations: any[] = []
+const equipments: any[] = [
+  { id: 'eq-1', station_id: 'station-yop', template_code: 'karcher_hd', name: 'Nettoyeur haute pression Kärcher HD 7/18', quantity: 2, state: 'good', acquired_on: '2024-02-01', last_service_on: '2026-09-01', cost_xof: 450000, notes: 'Poste 1 et 2', is_active: true },
+  { id: 'eq-2', station_id: 'station-yop', template_code: 'aspirateur_eau_poussiere', name: 'Aspirateur eau et poussière tri-moteurs', quantity: 2, state: 'good', acquired_on: '2024-03-10', cost_xof: 180000, notes: 'Zone séchage', is_active: true },
+]
+
+const serviceOptions: ServiceOption[] = [
+  { id: 'opt-1', station_id: 'station-yop', name: 'Parfum d’ambiance vanille/fraîcheur', description: 'Pulvérisation habitacle longue durée', price_xof: 1000, duration_minutes: 5, sort_order: 1, is_active: true, scope: 'station' },
+  { id: 'opt-2', station_id: 'station-yop', name: 'Traitement brillance pneus & plastiques', description: 'Rénovateur pneus et pare-chocs', price_xof: 1500, duration_minutes: 10, sort_order: 2, is_active: true, scope: 'station' },
+  { id: 'opt-3', station_id: 'station-yop', name: 'Cire de protection déperlante express', description: 'Protection carrosserie anti-poussière', price_xof: 2500, duration_minutes: 15, sort_order: 3, is_active: true, scope: 'station' },
+]
+
+const priceRules: PriceRule[] = [
+  { id: 'pr-1', station_id: 'station-yop', service_id: 'srv-1', category_code: 'moto', price_xof: 1000, reason: 'Tarif initial moto', is_active: true, created_at: new Date().toISOString() },
+  { id: 'pr-2', station_id: 'station-yop', service_id: 'srv-2', category_code: 'berline', price_xof: 2000, reason: 'Tarif extérieur berline', is_active: true, created_at: new Date().toISOString() },
+  { id: 'pr-3', station_id: 'station-yop', service_id: 'srv-2', category_code: 'citadine', price_xof: 1500, reason: 'Remise citadine compacte', is_active: true, created_at: new Date().toISOString() },
+  { id: 'pr-4', station_id: 'station-yop', service_id: 'srv-3', category_code: 'berline', price_xof: 4000, reason: 'Complet berline', is_active: true, created_at: new Date().toISOString() },
+  { id: 'pr-5', station_id: 'station-yop', service_id: 'srv-3', category_code: 'suv_4x4', price_xof: 5000, reason: 'Complet SUV/4x4', is_active: true, created_at: new Date().toISOString() },
+  { id: 'pr-6', station_id: 'station-yop', service_id: 'srv-2', usage_code: 'taxi_compteur', price_xof: 1500, reason: 'Tarif préférentiel taxis', is_active: true, created_at: new Date().toISOString() },
+]
+const stockItems: any[] = [
+  { id: 'stk-1', station_id: 'station-yop', name: 'Shampoing carrosserie moussant (Bidon 20L)', category_code: 'produits', unit: 'bidon', quantity: 6, min_quantity: 2, unit_cost_xof: 18000, supplier: 'ProWash Abidjan', location: 'Local produits', is_active: true },
+  { id: 'stk-2', station_id: 'station-yop', name: 'Chiffons microfibres haute densité', category_code: 'consommables', unit: 'lot', quantity: 24, min_quantity: 10, unit_cost_xof: 1500, supplier: 'Grossiste Adjamé', location: 'Étagère 1', is_active: true },
+  { id: 'stk-3', station_id: 'station-yop', name: 'Nettoyant jantes dégraissant', category_code: 'produits', unit: 'flacon', quantity: 8, min_quantity: 3, unit_cost_xof: 3500, supplier: 'ProWash Abidjan', location: 'Local produits', is_active: true },
+]
+const stockMovements: any[] = []
 
 const cashSessions: CashSession[] = []
 const washOrders: WashOrder[] = []
@@ -517,12 +805,12 @@ function addAudit(action: string, entity: string, entityId: string, actor: strin
   })
 }
 
-// Seed 45 days of realistic data
+// Seed data
 function seedData() {
   const now = new Date()
   let orderSeq = 1000
 
-  for (let dayOffset = 45; dayOffset >= 0; dayOffset--) {
+  for (let dayOffset = 30; dayOffset >= 0; dayOffset--) {
     const d = new Date(now.getTime() - dayOffset * 86400000)
     const yyyy = d.getFullYear()
     const mm = String(d.getMonth() + 1).padStart(2, '0')
@@ -560,7 +848,7 @@ function seedData() {
     }
 
     // Orders for this day
-    const orderCount = d.getDay() === 0 ? 5 : 8 + (dayOffset % 6)
+    const orderCount = d.getDay() === 0 ? 5 : 7 + (dayOffset % 5)
     for (let i = 0; i < orderCount; i++) {
       orderSeq++
       const ref = `L-${yyyy}${mm}${dd}-${String(i + 1).padStart(4, '0')}`
@@ -586,7 +874,7 @@ function seedData() {
 
       const subtotal = srv.price_xof
       const discount = i % 5 === 0 ? 500 : 0
-      const total = subtotal - discount
+      const total = Math.max(0, subtotal - discount)
 
       const orderTime = new Date(d.setHours(8 + (i % 10), (i * 12) % 60, 0, 0)).toISOString()
       const completedTime = new Date(d.setHours(8 + (i % 10) + 1, (i * 12) % 60, 0, 0)).toISOString()
@@ -695,35 +983,6 @@ function seedData() {
     }
     cashSessions.push(session)
   }
-
-  // Événements d'audit représentatifs des 3 rôles opérationnels
-  addAudit('employee.created', 'employee', 'user-washer', 'Awa Traoré (Gérant)', {
-    full_name: 'Bakary Koné',
-    role: 'washer',
-    commission: '500 FCFA / lavage terminé',
-    actor_role: 'manager',
-  })
-  addAudit('service.updated', 'service', 'srv-3', 'Awa Traoré (Gérant)', {
-    service_name: 'Lavage complet voiture',
-    old_price_xof: 3500,
-    new_price_xof: 4000,
-    actor_role: 'manager',
-  })
-  addAudit('cash_session.closed', 'cash_session', 'cs-hier', 'Moussa Diomandé (Caissier)', {
-    expected_xof: 35000,
-    counted_xof: 35000,
-    difference_xof: 0,
-    actor_role: 'cashier',
-  })
-  addAudit('discount.granted', 'wash_order', 'L-20261013-0004', 'Awa Traoré (Gérant)', {
-    amount_xof: 1000,
-    reason: 'Remise fidélité client flotte VTC',
-    actor_role: 'manager',
-  })
-  addAudit('wash_order.canceled', 'wash_order', 'L-20261012-0021', 'Awa Traoré (Gérant)', {
-    reason: 'Client rappelé en urgence avant début de la prestation',
-    actor_role: 'manager',
-  })
 }
 
 seedData()
@@ -769,18 +1028,263 @@ const rolePermissions: Record<string, string[]> = {
   ],
 }
 
-// Active sessions map: token -> userId
+// Active sessions: token -> userId
 const activeSessions = new Map<string, string>()
 
-// Pre-authorize demo user for smooth instant preview
-const DEMO_TOKEN = 'demo-session-token'
-activeSessions.set(DEMO_TOKEN, 'user-owner')
+// Pre-authorize demo users
+activeSessions.set('demo-session-token', 'user-owner')
 
 function getPrincipal(req: Request): User | null {
-  const token = req.cookies?.washguard_session || req.headers['authorization']?.replace(/^Bearer\s+/, '') || DEMO_TOKEN
+  const authHeader = req.headers['authorization']
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
+  const token = req.cookies?.washguard_session || bearerToken
+  if (!token) return null
   const userId = activeSessions.get(token)
   if (!userId) return null
   return users.find((u) => u.id === userId && u.is_active) ?? null
+}
+
+function calculateOnboarding(orgId: string, stationId?: string) {
+  const org = organizations.find((o) => o.id === orgId) || organizations[0]
+  const st = stations.find((s) => s.id === stationId) || stations.find((s) => s.organization_id === orgId) || stations[0]
+  const stId = st?.id || ''
+
+  const hasOwner = users.some((u) => u.organization_id === orgId && (u.role === 'owner' || u.role === 'manager'))
+  const entrepriseDone = Boolean(org && org.name && org.city && (org.phone || org.email))
+  const stationDone = Boolean(st && st.name && st.city && (st.site?.wash_types?.length || st.site?.bays || st.address))
+  const horairesDone = Boolean(st && st.opening_hours_days && st.opening_hours_days.some((d) => d.is_open && d.opens_at && d.closes_at))
+  
+  const stCategories = st?.vehicle_categories ?? []
+  const vehiculesDone = stCategories.length > 0 ? stCategories.some((c) => c.is_active) : vehicleCategories.some((c) => c.is_active)
+
+  const stUsages = st?.vehicle_usages ?? []
+  const stCouples = st?.usage_categories ?? []
+  const usagesDone = (stUsages.length > 0 ? stUsages.some((u) => u.is_active) : vehicleUsages.some((u) => u.is_active)) &&
+    stCouples.length > 0
+
+  const stServices = services.filter((s) => s.station_id === stId && s.is_active)
+  const prestationsDone = stServices.length > 0
+
+  const stOptions = serviceOptions.filter((o) => o.station_id === stId)
+  const optionsDone = true
+
+  const hasGenericPrices = stServices.some((s) => s.price_xof > 0)
+  const hasMatrixRules = priceRules.some((r) => r.station_id === stId && r.is_active && (r.price_xof ?? 0) > 0)
+  const tarifsDone = hasGenericPrices || hasMatrixRules
+
+  const stPaymentMethods = st?.payment_methods ?? paymentMethodsDeclared
+  const moyensDone = stPaymentMethods.some((p) => p.is_active)
+
+  const stEmployees = users.filter((u) => u.organization_id === orgId)
+  const equipeDone = stEmployees.length >= 1
+
+  const stEquipments = equipments.filter((e) => e.station_id === stId)
+  const materielDone = stEquipments.length > 0
+
+  const commandesDone = Boolean(st?.order_rules)
+
+  const steps = [
+    {
+      code: 'espace',
+      title: 'Espace propriétaire',
+      description: 'Compte initialisé avec droits d’administration complets',
+      required: true,
+      done: hasOwner,
+      state: hasOwner ? 'completed' : 'pending',
+      detail: hasOwner ? 'Propriétaire actif' : 'En attente',
+      screen: '/parametres',
+      hint: '',
+      form: 'espace',
+      data: {},
+    },
+    {
+      code: 'entreprise',
+      title: 'Identité commerciale',
+      description: 'Raison sociale, ville, contacts et mentions légales',
+      required: true,
+      done: entrepriseDone,
+      state: entrepriseDone ? 'completed' : 'pending',
+      detail: org?.name ? `${org.name} (${org.city})` : 'À renseigner',
+      screen: '/parametres',
+      hint: 'Renseignez le nom officiel et la ville de votre entreprise de lavage.',
+      form: 'entreprise',
+      data: org ?? {},
+    },
+    {
+      code: 'station',
+      title: 'Fiche & Capacités de la station',
+      description: 'Localisation, pistes, eau, électricité et équipements de site',
+      required: true,
+      done: stationDone,
+      state: stationDone ? 'completed' : 'pending',
+      detail: st ? `${st.name} · ${st.site?.bays ?? 4} pistes` : 'À configurer',
+      screen: '/parametres',
+      hint: 'Déclarez les pistes de lavage, la réserve d’eau et les types de lavage pratiqués.',
+      form: 'station',
+      data: st ?? {},
+    },
+    {
+      code: 'horaires',
+      title: 'Horaires d’ouverture',
+      description: 'Plages horaires par jour de la semaine et exceptions',
+      required: true,
+      done: horairesDone,
+      state: horairesDone ? 'completed' : 'pending',
+      detail: horairesDone ? `${st?.opening_hours_days?.filter((d) => d.is_open).length ?? 6} jours ouverts` : 'Horaires requis',
+      screen: '/parametres',
+      hint: 'Indiquez au moins un jour d’ouverture avec heure de début et fin de service.',
+      form: 'horaires',
+      data: {},
+    },
+    {
+      code: 'vehicules',
+      title: 'Catégories de véhicules',
+      description: 'Types de véhicules acceptés (moto, berline, SUV, utilitaire...)',
+      required: true,
+      done: vehiculesDone,
+      state: vehiculesDone ? 'completed' : 'pending',
+      detail: `${(st?.vehicle_categories ?? vehicleCategories).filter((c) => c.is_active).length} catégories actives`,
+      screen: '/tarifs',
+      hint: 'Cochez les types de véhicules que votre station est équipée pour laver.',
+      form: 'vehicules',
+      data: {},
+    },
+    {
+      code: 'usages',
+      title: 'Usages commerciaux',
+      description: 'Particulier, taxi compteur, VTC, flotte entreprise, livraison',
+      required: true,
+      done: usagesDone,
+      state: usagesDone ? 'completed' : 'pending',
+      detail: `${(st?.vehicle_usages ?? vehicleUsages).filter((u) => u.is_active).length} usages · ${stCouples.length} combinaisons`,
+      screen: '/tarifs',
+      hint: 'Activez les profils d’usage et associez les catégories de véhicules concernées.',
+      form: 'usages',
+      data: {},
+    },
+    {
+      code: 'prestations',
+      title: 'Catalogue des prestations',
+      description: 'Services proposés (lavage simple, complet, moteur, detailing...)',
+      required: true,
+      done: prestationsDone,
+      state: prestationsDone ? 'completed' : 'pending',
+      detail: `${stServices.length} prestations actives`,
+      screen: '/prestations',
+      hint: 'Créez ou adoptez au moins une prestation de lavage.',
+      form: 'prestations',
+      data: {},
+    },
+    {
+      code: 'options',
+      title: 'Options & Suppléments',
+      description: 'Suppléments optionnels facturables (parfum, cire, lustrage...)',
+      required: false,
+      done: optionsDone,
+      state: optionsDone ? 'completed' : 'pending',
+      detail: `${stOptions.length} option(s)`,
+      screen: '/prestations',
+      hint: 'Ajoutez des options de finition pour augmenter votre panier moyen.',
+      form: 'options',
+      data: {},
+    },
+    {
+      code: 'tarifs',
+      title: 'Grille tarifaire',
+      description: 'Tarifs par catégorie de véhicule et profil d’usage commercial',
+      required: true,
+      done: tarifsDone,
+      state: tarifsDone ? 'completed' : 'pending',
+      detail: tarifsDone ? 'Grille configurée' : 'Prix à renseigner',
+      screen: '/tarifs',
+      hint: 'Fixez les tarifs de vos prestations principales selon le type de véhicule.',
+      form: 'tarifs',
+      data: {},
+    },
+    {
+      code: 'moyens',
+      title: 'Moyens de paiement',
+      description: 'Espèces, Wave, Orange Money, MTN MoMo, Carte bancaire',
+      required: true,
+      done: moyensDone,
+      state: moyensDone ? 'completed' : 'pending',
+      detail: `${stPaymentMethods.filter((p) => p.is_active).length} moyens actifs`,
+      screen: '/caisse',
+      hint: 'Activez au moins un moyen d’encaissement pour la caisse.',
+      form: 'moyens',
+      data: {},
+    },
+    {
+      code: 'equipe',
+      title: 'Équipe & Fonctions',
+      description: 'Comptes des gérants, caissiers et laveurs de la station',
+      required: false,
+      done: equipeDone,
+      state: equipeDone ? 'completed' : 'pending',
+      detail: `${stEmployees.length} membre(s)`,
+      screen: '/employes',
+      hint: 'Invitez vos collaborateurs ou gérez les comptes de caisse.',
+      form: 'equipe',
+      data: {},
+    },
+    {
+      code: 'materiel',
+      title: 'Équipements & Matériel',
+      description: 'Matériel haute pression, aspirateurs et stock initial',
+      required: false,
+      done: materielDone,
+      state: materielDone ? 'completed' : 'pending',
+      detail: `${stEquipments.length} équipement(s)`,
+      screen: '/parametres',
+      hint: 'Déclarez votre matériel pour le suivi de maintenance.',
+      form: 'materiel',
+      data: {},
+    },
+    {
+      code: 'commandes',
+      title: 'Règles de caisse & Commandes',
+      description: 'Ouverture de caisse, remises, cycle des fiches et commissions',
+      required: false,
+      done: commandesDone,
+      state: commandesDone ? 'completed' : 'pending',
+      detail: 'Règles définies',
+      screen: '/parametres',
+      hint: 'Ajustez le plafond de remise caissier et les commissions des laveurs.',
+      form: 'commandes',
+      data: {},
+    },
+  ]
+
+  const requiredSteps = steps.filter((s) => s.required)
+  const can_activate = requiredSteps.every((s) => s.done)
+  const stepsDone = steps.filter((s) => s.done).length
+  const percent = Math.round((stepsDone / steps.length) * 100)
+  const isActuallyActive = (org?.status === 'active' && st?.is_active) || can_activate
+
+  const missing = requiredSteps
+    .filter((s) => !s.done)
+    .map((s) => ({
+      code: s.code,
+      title: s.title,
+      reason: s.description,
+    }))
+
+  return {
+    organization_id: orgId,
+    state: isActuallyActive ? ('active' as const) : ('in_progress' as const),
+    progress: {
+      done: stepsDone,
+      total: steps.length,
+      percent,
+      steps_done: stepsDone,
+      steps_total: steps.length,
+    },
+    steps,
+    missing,
+    can_activate,
+    started_at: org?.created_at || new Date().toISOString(),
+    activated_at: isActuallyActive ? (st?.created_at || new Date().toISOString()) : '',
+  }
 }
 
 function buildMePayload(user: User) {
@@ -817,6 +1321,8 @@ function buildMePayload(user: User) {
       }
     : null
 
+  const onboardingPayload = calculateOnboarding(user.organization_id || 'org-demo', user.station_id || st?.id)
+
   return {
     user: {
       id: user.id,
@@ -833,6 +1339,7 @@ function buildMePayload(user: User) {
     subscription: subscriptionPayload,
     permissions,
     must_change_password: user.must_change_password,
+    onboarding: onboardingPayload,
   }
 }
 
@@ -887,7 +1394,7 @@ api.post('/auth/login', (req, res) => {
   activeSessions.set(token, user.id)
   setSessionCookie(res, token, req)
 
-  res.json(buildMePayload(user))
+  res.json({ ...buildMePayload(user), session_token: token })
 })
 
 api.post('/auth/register', (req, res) => {
@@ -930,20 +1437,45 @@ api.post('/auth/register', (req, res) => {
     phone: phone || '',
     address: '',
     city: city || 'Abidjan',
+    country: "Côte d'Ivoire",
+    district: city || 'Abidjan',
+    commune: '',
+    district_area: '',
+    street: '',
+    landmark: '',
+    latitude: '5.3489',
+    longitude: '-4.0823',
+    billing_address: '',
     timezone: 'Africa/Abidjan',
     currency: 'XOF',
     logo_url: '',
     opening_hours: {},
+    site: getDefaultStationSite(station_name),
+    opening_hours_days: getDefaultOpeningDays(),
+    opening_exceptions: [],
+    payment_methods: getDefaultPaymentMethods(stationId),
+    order_rules: getDefaultOrderRules(),
+    vehicle_categories: getDefaultVehicleCategories(),
+    vehicle_usages: getDefaultVehicleUsages(),
+    usage_categories: getDefaultUsageCategories(),
     settings: {
       commission_mode: 'per_wash',
       commission_per_wash_xof: 500,
       monthly_goal_xof: 1000000,
+      require_open_cash_session: true,
+      max_cashier_discount_xof: 1000,
+      receipt_footer: 'Merci de votre visite !',
     },
     is_default: true,
     is_active: true,
     created_at: new Date().toISOString(),
   }
   stations.push(newStation)
+
+  equipments.push(
+    { id: `eq-${Date.now()}-1`, station_id: stationId, template_code: 'karcher_hd', name: 'Nettoyeur haute pression Kärcher HD 7/18', quantity: 2, state: 'good', acquired_on: new Date().toISOString().slice(0, 10), is_active: true },
+    { id: `eq-${Date.now()}-2`, station_id: stationId, template_code: 'aspirateur_eau_poussiere', name: 'Aspirateur eau et poussière tri-moteurs', quantity: 1, state: 'good', acquired_on: new Date().toISOString().slice(0, 10), is_active: true }
+  )
 
   const newSub: Subscription = {
     id: `sub-${Date.now()}`,
@@ -986,11 +1518,13 @@ api.post('/auth/register', (req, res) => {
   activeSessions.set(token, newUser.id)
   setSessionCookie(res, token, req)
 
-  res.status(201).json(buildMePayload(newUser))
+  res.status(201).json({ ...buildMePayload(newUser), session_token: token })
 })
 
 api.post('/auth/logout', (req, res) => {
-  const token = req.cookies?.washguard_session
+  const authHeader = req.headers['authorization']
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
+  const token = req.cookies?.washguard_session || bearerToken
   if (token) activeSessions.delete(token)
   res.clearCookie('washguard_session')
   res.json({ ok: true })
@@ -1024,6 +1558,10 @@ api.get('/organizations/current', requireAuth, (req, res) => {
   res.json({
     organization: org,
     station: st,
+    registry: [
+      { code: 'rccm', label: 'Numéro RCCM', value: org?.rccm || '', status: org?.rccm ? 'valid' : 'missing' },
+      { code: 'tax_id', label: 'Compte Contribuable', value: org?.tax_id || '', status: org?.tax_id ? 'valid' : 'missing' },
+    ],
     counts: {
       stations: orgStations.length,
       employees: orgEmployees.length,
@@ -1038,7 +1576,7 @@ api.patch('/organizations/current', requireAuth, (req, res) => {
   if (!org) return res.status(404).json({ error: { message: 'Organisation introuvable.' } })
   Object.assign(org, req.body)
   addAudit('organization.updated', 'organization', org.id, user.full_name)
-  res.json({ message: 'Organisation mise à jour.' })
+  res.json({ message: 'Organisation mise à jour.', fields: Object.keys(req.body) })
 })
 
 api.get('/organizations/subscription', requireAuth, (req, res) => {
@@ -1072,29 +1610,109 @@ api.get('/stations', requireAuth, (req, res) => {
 
 api.post('/stations', requireAuth, (req, res) => {
   const user = (req as any).user as User
-  const { name, code, phone, address, city, timezone } = req.body || {}
-  const newStation: Station = {
-    id: `st-${Date.now()}`,
-    organization_id: user.organization_id || 'org-demo',
+  const {
     name,
-    code: code || name.slice(0, 3).toUpperCase(),
+    code,
+    phone,
+    address,
+    city,
+    commune,
+    district_area,
+    timezone,
+    bays,
+    water_source,
+    water_reserve_liters,
+    wash_types,
+  } = req.body || {}
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: { code: 'validation_error', message: 'Le nom de la station est obligatoire.' } })
+  }
+
+  const stationId = `st-${Date.now()}`
+  const site = getDefaultStationSite(name)
+  if (bays) site.bays = Number(bays)
+  if (water_source) site.water_source = water_source
+  if (water_reserve_liters) site.water_reserve_liters = Number(water_reserve_liters)
+  if (wash_types && Array.isArray(wash_types) && wash_types.length > 0) site.wash_types = wash_types
+
+  const newStation: Station = {
+    id: stationId,
+    organization_id: user.organization_id || 'org-demo',
+    name: name.trim(),
+    code: (code && code.trim()) || name.trim().slice(0, 3).toUpperCase(),
     phone: phone || '',
     address: address || '',
     city: city || 'Abidjan',
+    country: "Côte d'Ivoire",
+    district: city || 'Abidjan',
+    commune: commune || '',
+    district_area: district_area || '',
+    street: address || '',
+    landmark: '',
+    latitude: '5.3489',
+    longitude: '-4.0823',
+    billing_address: address || '',
     timezone: timezone || 'Africa/Abidjan',
     currency: 'XOF',
     logo_url: '',
     opening_hours: {},
+    site,
+    opening_hours_days: getDefaultOpeningDays(),
+    opening_exceptions: [],
+    payment_methods: getDefaultPaymentMethods(stationId),
+    order_rules: getDefaultOrderRules(),
+    vehicle_categories: getDefaultVehicleCategories(),
+    vehicle_usages: getDefaultVehicleUsages(),
+    usage_categories: getDefaultUsageCategories(),
     settings: {
       commission_mode: 'per_wash',
       commission_per_wash_xof: 500,
-      monthly_goal_xof: 1000000,
+      monthly_goal_xof: 1200000,
+      require_open_cash_session: true,
+      max_cashier_discount_xof: 1000,
+      receipt_footer: `Merci de votre confiance. À très bientôt chez ${name.trim()} !`,
     },
-    is_default: false,
+    is_default: stations.filter((s) => s.organization_id === user.organization_id).length === 0,
     is_active: true,
     created_at: new Date().toISOString(),
   }
+
   stations.push(newStation)
+
+  // Seed default services for this newly created station
+  const defaultServices = [
+    { name: 'Lavage simple extérieur', category: 'lavage', description: 'Nettoyage carrosserie, jantes et vitres', price_xof: 2000, duration_minutes: 25 },
+    { name: 'Lavage complet (Intérieur + Extérieur)', category: 'lavage', description: 'Nettoyage complet avec aspiration et tableau de bord', price_xof: 4000, duration_minutes: 45 },
+    { name: 'Lavage Express', category: 'lavage', description: 'Rinçage haute pression et shampoing rapide', price_xof: 1500, duration_minutes: 15 },
+    { name: 'Aspiration & Habitacle', category: 'interieur', description: 'Aspiration moquettes, sièges et coffre', price_xof: 1500, duration_minutes: 20 },
+    { name: 'Lavage compartiment moteur', category: 'moteur', description: 'Dégraissage et séchage du moteur', price_xof: 3000, duration_minutes: 30 },
+  ]
+  defaultServices.forEach((s, idx) => {
+    services.push({
+      id: `srv-${Date.now()}-${idx}`,
+      organization_id: user.organization_id || 'org-demo',
+      station_id: stationId,
+      name: s.name,
+      category: s.category,
+      description: s.description,
+      price_xof: s.price_xof,
+      duration_minutes: s.duration_minutes,
+      sort_order: idx + 1,
+      is_active: true,
+    })
+  })
+
+  // Seed default equipments
+  equipments.push(
+    { id: `eq-${Date.now()}-1`, station_id: stationId, template_code: 'karcher_hd', name: 'Nettoyeur haute pression Kärcher', quantity: 2, state: 'good', acquired_on: new Date().toISOString().slice(0, 10), is_active: true },
+    { id: `eq-${Date.now()}-2`, station_id: stationId, template_code: 'aspirateur_pro', name: 'Aspirateur professionnel bi-moteur', quantity: 1, state: 'good', acquired_on: new Date().toISOString().slice(0, 10), is_active: true }
+  )
+
+  if (!user.station_id) {
+    user.station_id = stationId
+  }
+
   addAudit('station.created', 'station', newStation.id, user.full_name)
   res.status(201).json(newStation)
 })
@@ -1103,14 +1721,298 @@ api.patch('/stations/:id', requireAuth, (req, res) => {
   const user = (req as any).user as User
   const st = stations.find((s) => s.id === req.params.id)
   if (!st) return res.status(404).json({ error: { message: 'Station introuvable.' } })
-  Object.assign(st, req.body)
+  const { site, settings, ...directFields } = req.body || {}
+  Object.assign(st, directFields)
+  if (site) {
+    st.site = { ...(st.site || getDefaultStationSite(st.name)), ...site }
+  }
+  if (settings) {
+    st.settings = { ...(st.settings || {}), ...settings }
+  }
   addAudit('station.updated', 'station', st.id, user.full_name)
   res.json(st)
 })
 
-// Vehicle Categories
+api.put('/stations/:id/profile', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const st = stations.find((s) => s.id === req.params.id)
+  if (!st) return res.status(404).json({ error: { message: 'Station introuvable.' } })
+  const { site, settings, ...directFields } = req.body || {}
+  Object.assign(st, directFields)
+  if (site) {
+    st.site = { ...(st.site || getDefaultStationSite(st.name)), ...site }
+  }
+  if (settings) {
+    st.settings = { ...(st.settings || {}), ...settings }
+  }
+  addAudit('station.profile_updated', 'station', st.id, user.full_name)
+  res.json(st)
+})
+
+api.get('/stations/:id/profile', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (!st) return res.status(404).json({ error: { message: 'Station introuvable.' } })
+  if (!st.site) st.site = getDefaultStationSite(st.name)
+  if (!st.opening_hours_days) st.opening_hours_days = getDefaultOpeningDays()
+  if (!st.opening_exceptions) st.opening_exceptions = []
+  const types_lavage_proposes = [
+    'manuel',
+    'haute_pression',
+    'mousse_active',
+    'portique_automatique',
+    'tunnel',
+    'vapeur',
+    'sans_eau_ecologique',
+  ]
+  res.json({
+    station: st,
+    site: st.site,
+    days: st.opening_hours_days,
+    exceptions: st.opening_exceptions,
+    types_lavage_proposes,
+  })
+})
+
+api.put('/stations/:id/opening-hours', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st) {
+    if (req.body.days) st.opening_hours_days = req.body.days
+    if (req.body.exceptions) st.opening_exceptions = req.body.exceptions
+  }
+  res.json({
+    days: st?.opening_hours_days || [],
+    exceptions: st?.opening_exceptions || [],
+    message: 'Horaires enregistrés avec succès.',
+  })
+})
+
+api.get('/stations/:id/payment-methods', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st && !st.payment_methods) st.payment_methods = getDefaultPaymentMethods(st.id)
+  const items = st?.payment_methods || paymentMethodsDeclared
+  res.json({ items, total: items.length, actifs: items.filter((p) => p.is_active).length })
+})
+
+api.put('/stations/:id/payment-methods', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st && req.body.methods) {
+    st.payment_methods = req.body.methods
+  }
+  const items = st?.payment_methods || paymentMethodsDeclared
+  res.json({ items, message: 'Moyens de paiement enregistrés avec succès.' })
+})
+
+api.get('/stations/:id/equipment', requireAuth, (req, res) => {
+  const items = equipments.filter((e) => e.station_id === req.params.id || !e.station_id)
+  res.json({ items, total: items.length })
+})
+
+api.post('/stations/:id/equipment', requireAuth, (req, res) => {
+  const eq = { id: `eq-${Date.now()}`, station_id: req.params.id, ...req.body, is_active: true }
+  equipments.push(eq)
+  res.status(201).json({ id: eq.id })
+})
+
+api.patch('/equipment/:id', requireAuth, (req, res) => {
+  const eq = equipments.find((e) => e.id === req.params.id)
+  if (eq) Object.assign(eq, req.body)
+  res.json({ ok: true })
+})
+
+api.get('/stations/:id/stock', requireAuth, (req, res) => {
+  const items = stockItems.filter((s) => s.station_id === req.params.id || !s.station_id)
+  res.json({ items, total: items.length })
+})
+
+api.post('/stations/:id/stock/items', requireAuth, (req, res) => {
+  const item = { id: `stk-${Date.now()}`, station_id: req.params.id, ...req.body, is_active: true }
+  stockItems.push(item)
+  res.status(201).json({ id: item.id })
+})
+
+api.patch('/stock/items/:id', requireAuth, (req, res) => {
+  const it = stockItems.find((s) => s.id === req.params.id)
+  if (it) Object.assign(it, req.body)
+  res.json({ ok: true })
+})
+
+api.get('/stock/items/:id/movements', requireAuth, (req, res) => {
+  const it = stockItems.find((s) => s.id === req.params.id)
+  res.json({ item_name: it?.name || 'Article', unit: it?.unit || 'unité', items: stockMovements.filter((m) => m.item_id === req.params.id) })
+})
+
+api.post('/stock/items/:id/movements', requireAuth, (req, res) => {
+  const mov = { id: `mov-${Date.now()}`, item_id: req.params.id, ...req.body, at: new Date().toISOString() }
+  stockMovements.unshift(mov)
+  res.status(201).json(mov)
+})
+
+api.get('/stations/:id/order-rules', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st && !st.order_rules) st.order_rules = getDefaultOrderRules()
+  res.json({
+    rules: st?.order_rules || getDefaultOrderRules(),
+    statuses: [
+      { code: 'pending', label: 'Reçue / En attente', description: 'Le véhicule est stationné dans la file d’attente.', terminal: false },
+      { code: 'in_progress', label: 'Lavage en cours', description: 'Le laveur affecté traite le véhicule sur piste.', terminal: false },
+      { code: 'quality_check', label: 'Contrôle qualité', description: 'Vérification des finitions avant remise.', terminal: false },
+      { code: 'ready', label: 'Véhicule prêt', description: 'Lavage terminé, prêt pour remise au client.', terminal: false },
+      { code: 'completed', label: 'Restitué & Réglé', description: 'Fiche clôturée et véhicule remis.', terminal: true },
+      { code: 'canceled', label: 'Annulé', description: 'Prestation annulée avec motif consigné.', terminal: true },
+    ],
+  })
+})
+
+api.put('/stations/:id/order-rules', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st) {
+    st.order_rules = { ...(st.order_rules || getDefaultOrderRules()), ...req.body }
+  }
+  res.json({ rules: st?.order_rules || req.body, message: 'Règles de commande enregistrées.' })
+})
+
+// Vehicle Categories & Usages
 api.get('/vehicle-categories', requireAuth, (_req, res) => {
   res.json({ items: vehicleCategories })
+})
+
+api.post('/vehicle-categories', requireAuth, (req, res) => {
+  const cat: VehicleCategory = {
+    id: `cat-${Date.now()}`,
+    code: req.body.code || `cat_${Date.now()}`,
+    name: req.body.name,
+    description: req.body.description || '',
+    sort_order: vehicleCategories.length + 1,
+    is_active: true,
+    family: req.body.family,
+  }
+  vehicleCategories.push(cat)
+  res.status(201).json({ items: vehicleCategories })
+})
+
+api.patch('/vehicle-categories/:code', requireAuth, (req, res) => {
+  const cat = vehicleCategories.find((c) => c.code === req.params.code || c.id === req.params.code)
+  if (cat) Object.assign(cat, req.body)
+  res.json({ items: vehicleCategories })
+})
+
+api.get('/vehicle-usages', requireAuth, (_req, res) => {
+  res.json({ items: vehicleUsages })
+})
+
+api.get('/vehicle-category-options', requireAuth, (req, res) => {
+  const stationId = String(req.query.station_id || stations[0]?.id)
+  const st = stations.find((s) => s.id === stationId) || stations[0]
+  const cats = (st?.vehicle_categories || getDefaultVehicleCategories()).filter((c) => c.is_active)
+  const uses = (st?.vehicle_usages || getDefaultVehicleUsages()).filter((u) => u.is_active)
+  res.json({
+    categories: cats,
+    usages: uses,
+  })
+})
+
+api.get('/vehicle-catalogue', requireAuth, (req, res) => {
+  const stationId = String(req.query.station_id || stations[0]?.id)
+  const st = stations.find((s) => s.id === stationId) || stations[0]
+  if (st && !st.vehicle_categories) st.vehicle_categories = getDefaultVehicleCategories()
+  if (st && !st.vehicle_usages) st.vehicle_usages = getDefaultVehicleUsages()
+
+  const categories = (st?.vehicle_categories || getDefaultVehicleCategories()).map((cat, i) => ({
+    code: cat.code,
+    name: cat.name,
+    family: cat.code === 'moto' ? 'Deux-roues' : cat.code === 'utilitaire' || cat.code === 'minibus' ? 'Utilitaires' : 'Véhicules légers',
+    description: cat.code === 'citadine' ? 'Voitures compactes de gabarit standard' : cat.code === 'suv_4x4' ? 'Grands véhicules ou tout-terrain' : 'Véhicule de catégorie ' + cat.name,
+    aliases: [cat.code, cat.name],
+    sort_order: cat.sort_order ?? (i + 1) * 10,
+    is_active: cat.is_active,
+    configured: true,
+    local_name: cat.local_name || cat.name,
+  }))
+
+  const usages = (st?.vehicle_usages || getDefaultVehicleUsages()).map((u, i) => ({
+    code: u.code,
+    name: u.name,
+    family: u.code === 'taxi_compteur' || u.code === 'vtc' ? 'Transport de personnes' : u.code === 'livraison' || u.code === 'flotte' ? 'Usage professionnel' : 'Usage privé',
+    description: u.code === 'taxi_compteur' ? 'Taxis urbains enregistrés' : u.code === 'vtc' ? 'Véhicules Yango / Uber / chauffeurs privés' : 'Clients réguliers pour leur véhicule personnel',
+    aliases: [u.code, u.name],
+    sort_order: u.sort_order ?? (i + 1) * 10,
+    is_active: u.is_active,
+    configured: true,
+    local_name: u.name,
+  }))
+
+  res.json({
+    station_id: stationId,
+    categories,
+    usages,
+    actives: categories.filter((c) => c.is_active).length,
+    usages_actifs: usages.filter((u) => u.is_active).length,
+    familles_categories: Array.from(new Set(categories.map((c) => c.family))),
+    familles_usages: Array.from(new Set(usages.map((u) => u.family))),
+    message_referentiel: 'Référentiel synchronisé avec la station.',
+  })
+})
+
+api.get('/vehicle-usage-categories', requireAuth, (req, res) => {
+  const stationId = String(req.query.station_id || stations[0]?.id)
+  const st = stations.find((s) => s.id === stationId) || stations[0]
+  if (st && !st.usage_categories) st.usage_categories = getDefaultUsageCategories()
+  const items = (st?.usage_categories || getDefaultUsageCategories()).map((c, i) => ({
+    usage_code: c.usage_code,
+    category_code: c.category_code,
+    is_active: c.is_active ?? true,
+    sort_order: (i + 1) * 10,
+  }))
+  res.json({ items, total: items.length, station_id: stationId })
+})
+
+api.put('/stations/:id/vehicle-categories', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st && req.body.categories) {
+    st.vehicle_categories = req.body.categories.map((c: any, index: number) => ({
+      code: c.code,
+      name: c.name || c.code,
+      local_name: c.local_name || c.name,
+      is_active: Boolean(c.is_active),
+      sort_order: c.sort_order || (index + 1) * 10,
+    }))
+  }
+  const actives = (st?.vehicle_categories || []).filter((c) => c.is_active).length
+  res.json({ items: st?.vehicle_categories || [], actives, message: 'Catégories enregistrées avec succès.' })
+})
+
+api.put('/stations/:id/vehicle-usages', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st && req.body.usages) {
+    st.vehicle_usages = req.body.usages.map((u: any, index: number) => ({
+      code: u.code,
+      name: u.name || u.code,
+      is_active: Boolean(u.is_active),
+      sort_order: u.sort_order || (index + 1) * 10,
+    }))
+  }
+  const actifs = (st?.vehicle_usages || []).filter((u) => u.is_active).length
+  res.json({ items: st?.vehicle_usages || [], actifs, message: 'Usages commerciaux enregistrés avec succès.' })
+})
+
+api.put('/stations/:id/vehicle-usage-categories', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st && req.body.couples) {
+    st.usage_categories = req.body.couples.map((c: any) => ({
+      usage_code: c.usage_code,
+      category_code: c.category_code,
+      is_active: true,
+    }))
+  }
+  res.json({
+    items: st?.usage_categories || [],
+    total: (st?.usage_categories || []).length,
+    message: 'Combinaisons (usages × catégories) enregistrées avec succès.',
+  })
+})
+
+api.put('/stations/:id/service-families', requireAuth, (_req, res) => {
+  res.json({ message: 'Familles de prestations mises à jour.' })
 })
 
 // Services
@@ -1127,10 +2029,7 @@ api.post('/services', requireAuth, (req, res) => {
   const user = (req as any).user as User
   if (user.role === 'cashier' || user.role === 'washer') {
     return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "Seul le gérant ou le propriétaire est autorisé à ajouter des prestations au catalogue.",
-      },
+      error: { code: 'forbidden', message: 'Seul le gérant ou le propriétaire est autorisé à ajouter des prestations.' },
     })
   }
   const stId = req.body.station_id || user.station_id || stations[0]?.id
@@ -1138,66 +2037,402 @@ api.post('/services', requireAuth, (req, res) => {
     id: `srv-${Date.now()}`,
     organization_id: user.organization_id || 'org-demo',
     station_id: stId,
-    name: req.body.name,
+    name: req.body.name || req.body.template_code || 'Prestation',
     category: req.body.category || 'lavage',
     description: req.body.description || '',
-    price_xof: Number(req.body.price_xof) || 0,
+    price_xof: Number(req.body.price_xof) || 2000,
     duration_minutes: Number(req.body.duration_minutes) || 30,
     sort_order: Number(req.body.sort_order) || services.length + 1,
     is_active: true,
   }
   services.push(newSrv)
-  addAudit('service.created', 'service', newSrv.id, user.full_name, {
-    name: newSrv.name,
-    price_xof: newSrv.price_xof,
-    actor_role: user.role,
-  })
+  addAudit('service.created', 'service', newSrv.id, user.full_name)
   res.status(201).json(newSrv)
 })
 
 api.patch('/services/:id', requireAuth, (req, res) => {
-  const user = (req as any).user as User
-  if (user.role === 'cashier' || user.role === 'washer') {
-    return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "Seul le gérant ou le propriétaire est autorisé à modifier les tarifs du catalogue.",
-      },
-    })
-  }
   const srv = services.find((s) => s.id === req.params.id)
   if (!srv) return res.status(404).json({ error: { message: 'Prestation introuvable.' } })
-  const oldPrice = srv.price_xof
   Object.assign(srv, req.body)
-  addAudit('service.updated', 'service', srv.id, user.full_name, {
-    name: srv.name,
-    old_price_xof: oldPrice,
-    new_price_xof: srv.price_xof,
-    actor_role: user.role,
-  })
   res.json(srv)
 })
 
 api.delete('/services/:id', requireAuth, (req, res) => {
-  const user = (req as any).user as User
-  if (user.role === 'cashier' || user.role === 'washer') {
-    return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "Seul le gérant ou le propriétaire est autorisé à désactiver une prestation du catalogue.",
-      },
-    })
-  }
   const srv = services.find((s) => s.id === req.params.id)
-  if (srv) {
-    srv.is_active = false
-    addAudit('service.disabled', 'service', srv.id, user.full_name, {
-      name: srv.name,
-      actor_role: user.role,
-    })
-  }
+  if (srv) srv.is_active = false
   res.json({ message: 'Prestation désactivée.' })
 })
+
+api.get('/services/:id/compatibilities', requireAuth, (req, res) => {
+  res.json({
+    service_id: req.params.id,
+    categories: ['moto', 'citadine', 'berline', 'suv_4x4', 'utilitaire'],
+    categories_disponibles: vehicleCategories.map((c) => ({ code: c.code || c.id, name: c.name })),
+    message: 'Compatibilités chargées.',
+  })
+})
+
+api.put('/services/:id/compatibilities', requireAuth, (_req, res) => {
+  res.json({ message: 'Compatibilités enregistrées.' })
+})
+
+api.get('/service-templates', requireAuth, (req, res) => {
+  res.json({
+    families: [
+      { code: 'lavage', name: 'Lavage & Extérieur', configured: true, is_active: true },
+      { code: 'interieur', name: 'Habitacle & Tissus', configured: true, is_active: true },
+      { code: 'moteur', name: 'Compartiment Moteur', configured: true, is_active: true },
+      { code: 'finition', name: 'Soins & Finition', configured: true, is_active: true },
+    ],
+    templates: [
+      { code: 'lav_ext_simple', name: 'Lavage Extérieur Simple', family_code: 'lavage', family_name: 'Lavage & Extérieur', description: 'Carrosserie, vitres et jantes au jet haute pression', duration_minutes: 20, suggested_price_xof: 2000 },
+      { code: 'lav_complet', name: 'Lavage Complet', family_code: 'lavage', family_name: 'Lavage & Extérieur', description: 'Extérieur, habitacle, dépoussiérage et aspiration complète', duration_minutes: 45, suggested_price_xof: 4000 },
+      { code: 'lav_express', name: 'Lavage Express Mousse', family_code: 'lavage', family_name: 'Lavage & Extérieur', description: 'Nettoyage carrosserie rapide sans essuyage approfondi', duration_minutes: 15, suggested_price_xof: 1500 },
+      { code: 'net_sieges', name: 'Shampouinage des Sièges', family_code: 'interieur', family_name: 'Habitacle & Tissus', description: 'Nettoyage en profondeur des tissus ou cuirs des sièges', duration_minutes: 60, suggested_price_xof: 5000 },
+      { code: 'asp_interieure', name: 'Aspiration Intérieure Approfondie', family_code: 'interieur', family_name: 'Habitacle & Tissus', description: 'Aspiration des tapis, moquettes, sièges et coffre', duration_minutes: 20, suggested_price_xof: 1500 },
+      { code: 'net_moteur', name: 'Nettoyage Compartiment Moteur', family_code: 'moteur', family_name: 'Compartiment Moteur', description: 'Dégraissage haute sécurité et lustrage des plastiques', duration_minutes: 30, suggested_price_xof: 3000 },
+      { code: 'lustrage_cire', name: 'Lustrage Carrosserie Haute Protection', family_code: 'finition', family_name: 'Soins & Finition', description: 'Cire de carnauba pour brillance éclatante et déperlance', duration_minutes: 60, suggested_price_xof: 6000 },
+    ],
+  })
+})
+
+api.get('/service-options', requireAuth, (req, res) => {
+  const stationId = String(req.query.station_id || stations[0]?.id)
+  const items = serviceOptions.filter((o) => !stationId || o.station_id === stationId)
+  res.json({ items, total: items.length })
+})
+
+api.post('/service-options', requireAuth, (req, res) => {
+  const opt: ServiceOption = {
+    id: `opt-${Date.now()}`,
+    station_id: req.body.station_id || stations[0]?.id,
+    name: req.body.name,
+    description: req.body.description || '',
+    price_xof: Number(req.body.price_xof) || 1000,
+    duration_minutes: Number(req.body.duration_minutes) || 10,
+    sort_order: serviceOptions.length + 1,
+    is_active: true,
+    scope: req.body.scope || 'station',
+  }
+  serviceOptions.push(opt)
+  res.status(201).json(opt)
+})
+
+api.patch('/service-options/:id', requireAuth, (req, res) => {
+  const opt = serviceOptions.find((o) => o.id === req.params.id)
+  if (opt) Object.assign(opt, req.body)
+  res.json(opt || { ok: true })
+})
+
+api.delete('/service-options/:id', requireAuth, (req, res) => {
+  const opt = serviceOptions.find((o) => o.id === req.params.id)
+  if (opt) opt.is_active = false
+  res.json({ ok: true })
+})
+
+api.get('/price-rules', requireAuth, (req, res) => {
+  const stationId = String(req.query.station_id || stations[0]?.id)
+  const items = priceRules.filter((r) => !stationId || r.station_id === stationId)
+  res.json({ items, total: items.length })
+})
+
+api.post('/price-rules', requireAuth, (req, res) => {
+  const pr: PriceRule = {
+    id: `pr-${Date.now()}`,
+    station_id: req.body.station_id || stations[0]?.id,
+    service_id: req.body.service_id,
+    category_code: req.body.category_code,
+    usage_code: req.body.usage_code,
+    customer_id: req.body.customer_id,
+    customer_name: req.body.customer_name,
+    price_xof: req.body.price_xof !== undefined ? Number(req.body.price_xof) : undefined,
+    valid_from: req.body.valid_from,
+    valid_to: req.body.valid_to,
+    reason: req.body.reason || 'Règle personnalisée',
+    is_active: req.body.is_active ?? true,
+    created_at: new Date().toISOString(),
+  }
+  priceRules.push(pr)
+  res.status(201).json(pr)
+})
+
+api.patch('/price-rules/:id', requireAuth, (req, res) => {
+  const pr = priceRules.find((r) => r.id === req.params.id)
+  if (pr) Object.assign(pr, req.body)
+  res.json(pr || { ok: true })
+})
+
+api.delete('/price-rules/:id', requireAuth, (req, res) => {
+  const pr = priceRules.find((r) => r.id === req.params.id)
+  if (pr) pr.is_active = false
+  res.json({ ok: true })
+})
+
+api.get('/price-rules/matrix', requireAuth, (req, res) => {
+  const stationId = String(req.query.station_id || stations[0]?.id)
+  const st = stations.find((s) => s.id === stationId) || stations[0]
+  const stServices = services.filter((s) => s.station_id === stationId && s.is_active)
+  const stCategories = (st?.vehicle_categories || getDefaultVehicleCategories()).filter((c) => c.is_active)
+  const stUsages = (st?.vehicle_usages || getDefaultVehicleUsages()).filter((u) => u.is_active)
+
+  const rows = stServices.map((srv) => {
+    const cells = stCategories.map((cat) => {
+      const match = priceRules.find((r) => r.station_id === stationId && r.service_id === srv.id && r.category_code === cat.code && r.is_active)
+      return {
+        category_code: cat.code,
+        price_xof: match ? match.price_xof ?? null : srv.price_xof || null,
+        rule_id: match?.id || '',
+        source: match ? 'règle' : 'catalogue',
+        is_free: false,
+      }
+    })
+
+    const usage_cells = stUsages.map((usage) => {
+      const match = priceRules.find((r) => r.station_id === stationId && r.service_id === srv.id && r.usage_code === usage.code && r.is_active)
+      return {
+        category_code: '',
+        usage_code: usage.code,
+        price_xof: match ? match.price_xof ?? null : null,
+        rule_id: match?.id || '',
+        source: match ? 'règle' : 'hérité',
+        is_free: false,
+      }
+    })
+
+    return {
+      service_id: srv.id,
+      name: srv.name,
+      family_code: srv.category,
+      family_name: srv.category === 'lavage' ? 'Lavage & Extérieur' : srv.category === 'interieur' ? 'Habitacle & Tissus' : srv.category === 'moteur' ? 'Moteur' : 'Finition',
+      duration_minutes: srv.duration_minutes,
+      generic_price_xof: srv.price_xof,
+      is_free: false,
+      is_quote_only: false,
+      needs_price: !srv.price_xof,
+      cells,
+      usage_cells,
+    }
+  })
+
+  res.json({
+    station_id: stationId,
+    services: rows,
+    categories: stCategories.map((c) => ({ code: c.code, name: c.name, family: 'Véhicules' })),
+    usages: stUsages.map((u) => ({ code: u.code, name: u.name, family: 'Usages' })),
+    generique_autorise: true,
+    a_tarifer: rows.filter((r) => r.needs_price).length,
+    message: 'Matrice tarifaire synchronisée avec la station.',
+  })
+})
+
+api.put('/price-rules/matrix', requireAuth, (req, res) => {
+  const { station_id, cells, usage_cells, generic_prices, reason } = req.body || {}
+  const stId = station_id || stations[0]?.id
+
+  if (Array.isArray(cells)) {
+    for (const cell of cells) {
+      if (!cell.service_id || !cell.category_code) continue
+      const existing = priceRules.find((r) => r.station_id === stId && r.service_id === cell.service_id && r.category_code === cell.category_code)
+      if (existing) {
+        existing.price_xof = cell.price_xof !== undefined ? Number(cell.price_xof) : existing.price_xof
+        existing.reason = reason || 'Mise à jour matrice'
+        existing.is_active = true
+      } else if (cell.price_xof !== undefined && cell.price_xof !== null) {
+        priceRules.push({
+          id: `pr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          station_id: stId,
+          service_id: cell.service_id,
+          category_code: cell.category_code,
+          price_xof: Number(cell.price_xof),
+          reason: reason || 'Saisie grille tarifaire',
+          is_active: true,
+          created_at: new Date().toISOString(),
+        })
+      }
+    }
+  }
+
+  if (Array.isArray(usage_cells)) {
+    for (const cell of usage_cells) {
+      if (!cell.service_id || !cell.usage_code) continue
+      const existing = priceRules.find((r) => r.station_id === stId && r.service_id === cell.service_id && r.usage_code === cell.usage_code)
+      if (existing) {
+        existing.price_xof = cell.price_xof !== undefined ? Number(cell.price_xof) : existing.price_xof
+        existing.reason = reason || 'Mise à jour usage'
+        existing.is_active = true
+      } else if (cell.price_xof !== undefined && cell.price_xof !== null) {
+        priceRules.push({
+          id: `pr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          station_id: stId,
+          service_id: cell.service_id,
+          usage_code: cell.usage_code,
+          price_xof: Number(cell.price_xof),
+          reason: reason || 'Saisie tarif usage',
+          is_active: true,
+          created_at: new Date().toISOString(),
+        })
+      }
+    }
+  }
+
+  if (Array.isArray(generic_prices)) {
+    for (const gp of generic_prices) {
+      const srv = services.find((s) => s.id === gp.service_id)
+      if (srv && gp.price_xof !== undefined) {
+        srv.price_xof = Number(gp.price_xof)
+      }
+    }
+  }
+
+  res.json({ message: 'Grille tarifaire enregistrée avec succès.' })
+})
+
+api.get('/price-preview', requireAuth, (req, res) => {
+  const stationId = String(req.query.station_id || stations[0]?.id)
+  const serviceId = String(req.query.service_id || '')
+  const categoryCode = String(req.query.category_code || '')
+  const usageCode = String(req.query.usage_code || '')
+
+  const srv = services.find((s) => s.id === serviceId)
+  let foundPrice = srv ? srv.price_xof : 2000
+  let source = 'catalogue'
+  let sourceLabel = 'Prix du catalogue'
+
+  if (usageCode) {
+    const matchUsage = priceRules.find((r) => r.station_id === stationId && r.service_id === serviceId && r.usage_code === usageCode && r.is_active)
+    if (matchUsage && matchUsage.price_xof !== undefined) {
+      foundPrice = matchUsage.price_xof
+      source = 'règle'
+      sourceLabel = 'Règle usage commercial'
+    }
+  }
+
+  if (categoryCode) {
+    const matchCat = priceRules.find((r) => r.station_id === stationId && r.service_id === serviceId && r.category_code === categoryCode && r.is_active)
+    if (matchCat && matchCat.price_xof !== undefined) {
+      foundPrice = matchCat.price_xof
+      source = 'règle'
+      sourceLabel = 'Règle catégorie véhicule'
+    }
+  }
+
+  const stOptions = serviceOptions.filter((o) => o.station_id === stationId && o.is_active)
+
+  res.json({
+    service_id: serviceId,
+    service_name: srv?.name || 'Prestation',
+    is_free: false,
+    is_quote_only: false,
+    date: new Date().toISOString().slice(0, 10),
+    price_xof: foundPrice,
+    price_source: source,
+    price_source_label: sourceLabel,
+    needs_price: !foundPrice,
+    options: stOptions.map((o) => ({
+      id: o.id,
+      name: o.name,
+      description: o.description,
+      price_xof: o.price_xof,
+      service_id: o.service_id || null,
+      category_code: o.category_code || '',
+      duration_minutes: o.duration_minutes,
+      scope: o.scope || 'station',
+    })),
+  })
+})
+
+api.get('/payment-methods', requireAuth, (req, res) => {
+  const stationId = String(req.query.station_id || stations[0]?.id)
+  const st = stations.find((s) => s.id === stationId) || stations[0]
+  if (st && !st.payment_methods) st.payment_methods = getDefaultPaymentMethods(st.id)
+  const items = st?.payment_methods || paymentMethodsDeclared
+  const actives = req.query.actives === '1'
+  const list = actives ? items.filter((p) => p.is_active) : items
+  res.json({ items: list, total: list.length, actifs: items.filter((p) => p.is_active).length })
+})
+
+api.post('/payment-methods', requireAuth, (req, res) => {
+  const stationId = req.body.station_id || stations[0]?.id
+  const st = stations.find((s) => s.id === stationId) || stations[0]
+  if (st && !st.payment_methods) st.payment_methods = getDefaultPaymentMethods(st.id)
+  const pm: DeclaredPaymentMethod = {
+    id: `pm-${Date.now()}`,
+    station_id: stationId,
+    code: req.body.code || req.body.name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+    name: req.body.name,
+    family: req.body.family || 'mobile_money',
+    family_label: req.body.family === 'cash' ? 'Espèces' : req.body.family === 'card' ? 'Carte bancaire' : req.body.family === 'transfer' ? 'Virement' : 'Mobile Money',
+    requires_reference: req.body.requires_reference ?? true,
+    is_active: req.body.is_active ?? true,
+    sort_order: ((st?.payment_methods || paymentMethodsDeclared).length + 1) * 10,
+    kind: 'personnalise',
+  }
+  if (st?.payment_methods) st.payment_methods.push(pm)
+  paymentMethodsDeclared.push(pm as any)
+  res.status(201).json(pm)
+})
+
+api.patch('/payment-methods/:id', requireAuth, (req, res) => {
+  const stationId = req.body.station_id || stations[0]?.id
+  const st = stations.find((s) => s.id === stationId) || stations[0]
+  const target = (st?.payment_methods || []).find((p) => p.id === req.params.id) || paymentMethodsDeclared.find((p) => p.id === req.params.id)
+  if (target) Object.assign(target, req.body)
+  res.json(target || { ok: true })
+})
+
+api.get('/stations/:id/cash-settings', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  res.json({
+    station_id: st?.id || req.params.id,
+    settings: {
+      require_open_cash_session: st?.settings.require_open_cash_session ?? true,
+      max_cashier_discount_xof: st?.settings.max_cashier_discount_xof ?? 1000,
+      receipt_footer: st?.settings.receipt_footer ?? 'Merci de votre visite !',
+      commission_mode: st?.settings.commission_mode ?? 'per_wash',
+      commission_per_wash_xof: st?.settings.commission_per_wash_xof ?? 500,
+      commission_percent: st?.settings.commission_percent ?? 15,
+      monthly_goal_xof: st?.settings.monthly_goal_xof ?? 1500000,
+    },
+    roles_connus: [
+      { code: 'owner', label: 'Propriétaire' },
+      { code: 'manager', label: 'Gérant' },
+      { code: 'cashier', label: 'Caissier' },
+      { code: 'washer', label: 'Laveur' },
+    ],
+  })
+})
+
+api.put('/stations/:id/cash-settings', requireAuth, (req, res) => {
+  const st = stations.find((s) => s.id === req.params.id) || stations[0]
+  if (st) {
+    st.settings = { ...(st.settings || {}), ...req.body }
+  }
+  res.json({
+    station_id: st?.id || req.params.id,
+    settings: st?.settings,
+    message: 'Paramètres de caisse mis à jour avec succès.',
+  })
+})
+
+api.get('/cash-settings', requireAuth, (_req, res) => {
+  const st = stations[0]
+  res.json({
+    station_id: st?.id,
+    settings: st?.settings,
+    require_open_cash_session: st?.settings.require_open_cash_session ?? true,
+    max_cashier_discount_xof: st?.settings.max_cashier_discount_xof ?? 1000,
+    receipt_footer: st?.settings.receipt_footer ?? 'Merci de votre visite !',
+  })
+})
+
+api.put('/cash-settings', requireAuth, (req, res) => {
+  const st = stations[0]
+  if (st) {
+    st.settings = { ...(st.settings || {}), ...req.body }
+  }
+  res.json({ settings: st?.settings || req.body, message: 'Paramètres de caisse mis à jour.' })
+})
+
 
 // Customers
 api.get('/customers', requireAuth, (req, res) => {
@@ -1304,7 +2539,7 @@ api.get('/employees/options', requireAuth, (req, res) => {
     id: u.id,
     full_name: u.full_name,
     role: u.role,
-    role_label: u.role === 'owner' ? 'Propriétaire' : u.role === 'manager' ? 'Gérant' : 'Caissier',
+    role_label: u.role === 'owner' ? 'Propriétaire' : u.role === 'manager' ? 'Gérant' : u.role === 'cashier' ? 'Caissier' : 'Laveur',
   }))
   res.json({ items })
 })
@@ -1322,7 +2557,7 @@ api.get('/employees', requireAuth, (req, res) => {
       email: u.email,
       phone: u.phone,
       role: u.role,
-      role_label: u.role === 'owner' ? 'Propriétaire' : u.role === 'manager' ? 'Gérant' : 'Caissier',
+      role_label: u.role === 'owner' ? 'Propriétaire' : u.role === 'manager' ? 'Gérant' : u.role === 'cashier' ? 'Caissier' : 'Laveur',
       station_id: u.station_id,
       station_name: station?.name,
       is_active: u.is_active,
@@ -1345,6 +2580,7 @@ api.get('/employees', requireAuth, (req, res) => {
       { id: 'owner', label: 'Propriétaire', description: 'Accès complet à la station et la facturation.' },
       { id: 'manager', label: 'Gérant', description: 'Supervision quotidienne, caisse et rapports.' },
       { id: 'cashier', label: 'Caissier', description: 'Enregistrement des lavages et encaissement.' },
+      { id: 'washer', label: 'Laveur', description: 'Suivi des lavages attribués et contrôle qualité.' },
     ],
   })
 })
@@ -1387,22 +2623,6 @@ api.get('/employees/:id/activity', requireAuth, (req, res) => {
 
 api.post('/employees', requireAuth, (req, res) => {
   const user = (req as any).user as User
-  if (user.role === 'cashier' || user.role === 'washer') {
-    return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "Seul le gérant ou le propriétaire est autorisé à ajouter des employés.",
-      },
-    })
-  }
-  if (user.role === 'manager' && (req.body.role === 'owner' || req.body.role === 'superadmin')) {
-    return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "Un gérant ne peut créer que des comptes Gérant, Caissier ou Laveur.",
-      },
-    })
-  }
   const tempPass = Math.random().toString(36).slice(-8)
   const newEmp: User = {
     id: `usr-${Date.now()}`,
@@ -1421,12 +2641,7 @@ api.post('/employees', requireAuth, (req, res) => {
     created_at: new Date().toISOString(),
   }
   users.push(newEmp)
-  addAudit('employee.created', 'employee', newEmp.id, user.full_name, {
-    full_name: newEmp.full_name,
-    email: newEmp.email,
-    role: newEmp.role,
-    actor_role: user.role,
-  })
+  addAudit('employee.created', 'employee', newEmp.id, user.full_name)
   res.status(201).json({
     id: newEmp.id,
     message: 'Employé créé.',
@@ -1438,57 +2653,112 @@ api.post('/employees', requireAuth, (req, res) => {
 })
 
 api.patch('/employees/:id', requireAuth, (req, res) => {
-  const user = (req as any).user as User
-  if (user.role === 'cashier' || user.role === 'washer') {
-    return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "Seul le gérant ou le propriétaire peut modifier les employés.",
-      },
-    })
-  }
   const emp = users.find((u) => u.id === req.params.id)
   if (!emp) return res.status(404).json({ error: { message: 'Employé introuvable.' } })
-  if (user.role === 'manager' && req.body.role === 'owner') {
-    return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "Un gérant ne peut pas attribuer le rôle Propriétaire.",
-      },
-    })
-  }
-  const oldActive = emp.is_active
   Object.assign(emp, req.body)
-  addAudit('employee.updated', 'employee', emp.id, user.full_name, {
-    full_name: emp.full_name,
-    role: emp.role,
-    is_active: emp.is_active,
-    active_changed: oldActive !== emp.is_active,
-    actor_role: user.role,
-  })
   res.json(emp)
 })
 
 api.post('/employees/:id/reset-password', requireAuth, (req, res) => {
-  const user = (req as any).user as User
-  if (user.role === 'cashier' || user.role === 'washer') {
-    return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "Seul le gérant ou le propriétaire peut réinitialiser un mot de passe.",
-      },
-    })
-  }
   const emp = users.find((u) => u.id === req.params.id)
   if (!emp) return res.status(404).json({ error: { message: 'Employé introuvable.' } })
   const newPass = Math.random().toString(36).slice(-8)
   emp.password_hash = newPass
   emp.must_change_password = true
-  addAudit('employee.password_reset', 'employee', emp.id, user.full_name, {
-    employee_name: emp.full_name,
-    actor_role: user.role,
-  })
   res.json({ temporary_password: newPass, message: 'Mot de passe réinitialisé.' })
+})
+
+// Invitations
+api.get('/invitations', requireAuth, (_req, res) => {
+  res.json({ items: invitations, total: invitations.length })
+})
+
+api.post('/invitations', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const code = Math.random().toString(36).substring(2, 8).toUpperCase()
+  const token = `inv-${Date.now()}-${Math.random().toString(36).substring(2)}`
+  const inv = {
+    id: `inv-${Date.now()}`,
+    organization_id: user.organization_id,
+    station_id: req.body.station_id || user.station_id,
+    email: req.body.email || '',
+    phone: req.body.phone || '',
+    role: req.body.role || 'washer',
+    role_label: req.body.role === 'manager' ? 'Gérant' : req.body.role === 'cashier' ? 'Caissier' : 'Laveur',
+    code,
+    token,
+    status: 'pending',
+    expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+    created_at: new Date().toISOString(),
+  }
+  invitations.unshift(inv)
+  res.status(201).json({
+    id: inv.id,
+    code: inv.code,
+    token: inv.token,
+    role: inv.role,
+    expires_at: inv.expires_at,
+    message: 'Invitation créée avec succès.',
+    notice: 'Transmettez le lien ou le code directement à votre collaborateur.',
+  })
+})
+
+api.post('/invitations/:id/revoke', requireAuth, (req, res) => {
+  const inv = invitations.find((i) => i.id === req.params.id)
+  if (inv) inv.status = 'revoked'
+  res.json({ message: 'Invitation révoquée.' })
+})
+
+api.get('/invitations/:code', (_req, res) => {
+  const inv = invitations.find((i) => i.code === _req.params.code || i.token === _req.params.code) || {
+    id: 'inv-preview',
+    organization_name: 'Station Étoile',
+    role: 'cashier',
+    role_label: 'Caissier',
+    expires_at: new Date(Date.now() + 3 * 86400000).toISOString(),
+    is_valid: true,
+  }
+  res.json(inv)
+})
+
+// Washer Portal
+api.get('/washer/tasks', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const list = washOrders.filter((w) => w.station_id === (user.station_id || stations[0]?.id) && (w.status === 'in_progress' || w.status === 'pending' || w.status === 'quality_check'))
+  res.json({ items: list })
+})
+
+api.get('/washer/me/performance', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const today = new Date().toISOString().slice(0, 10)
+  const myToday = washOrders.filter((w) => w.employee_id === user.id && w.business_day === today && w.status === 'completed')
+  const myMonth = washOrders.filter((w) => w.employee_id === user.id && w.status === 'completed')
+  const rate = user.commission_per_wash_xof || 500
+  res.json({
+    washes_today: myToday.length,
+    washes_month: myMonth.length,
+    commission_today_xof: myToday.length * rate,
+    commission_month_xof: myMonth.length * rate,
+    commission_rate_label: `${rate.toLocaleString('fr-FR')} FCFA par lavage terminé`,
+  })
+})
+
+api.post('/washer/tasks/:id/status', requireAuth, (req, res) => {
+  const order = washOrders.find((w) => w.id === req.params.id)
+  if (!order) return res.status(404).json({ error: { message: 'Tâche introuvable.' } })
+  order.status = req.body.status
+  if (req.body.status === 'completed') order.completed_at = new Date().toISOString()
+  res.json(order)
+})
+
+api.post('/washer/tasks/:id/incident', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const order = washOrders.find((w) => w.id === req.params.id)
+  if (!order) return res.status(404).json({ error: { message: 'Tâche introuvable.' } })
+  order.incident_note = req.body.incident_note
+  order.incident_reported_at = new Date().toISOString()
+  order.incident_reporter_name = user.full_name
+  res.json(order)
 })
 
 // Wash Orders
@@ -1596,15 +2866,13 @@ api.post('/wash-orders', requireAuth, (req, res) => {
   const stationId = req.body.station_id || user.station_id || stations[0]?.id
   const stationObj = stations.find((s) => s.id === stationId)
 
-  // Règle opérationnelle : Le caissier a un plafond de remise (ex: 1000 FCFA max).
-  // Au-delà, l'autorisation du gérant est requise.
   if (user.role === 'cashier') {
     const maxDiscount = Number(stationObj?.settings?.max_cashier_discount_xof ?? 1000)
     if (discount > maxDiscount) {
       return res.status(400).json({
         error: {
           code: 'validation_error',
-          message: `La remise demandée (${discount.toLocaleString('fr-FR')} FCFA) dépasse le plafond autorisé pour le caissier (${maxDiscount.toLocaleString('fr-FR')} FCFA). Une remise exceptionnelle nécessite l'accord du gérant.`,
+          message: `La remise demandée (${discount.toLocaleString('fr-FR')} FCFA) dépasse le plafond autorisé pour le caissier (${maxDiscount.toLocaleString('fr-FR')} FCFA).`,
           fields: { discount_xof: 'Plafond de remise caissier dépassé' },
         },
       })
@@ -1612,8 +2880,7 @@ api.post('/wash-orders', requireAuth, (req, res) => {
   }
 
   const total = Math.max(0, subtotal - discount)
-
-  const cat = vehicleCategories.find((c) => c.id === req.body.vehicle_category_id)
+  const cat = vehicleCategories.find((c) => c.id === req.body.vehicle_category_id || c.code === req.body.vehicle_category_id)
   const emp = users.find((u) => u.id === req.body.employee_id)
 
   const newOrder: WashOrder = {
@@ -1646,53 +2913,32 @@ api.post('/wash-orders', requireAuth, (req, res) => {
   washOrders.unshift(newOrder)
   addAudit('wash_order.created', 'wash_order', newOrder.id, user.full_name, { total_xof: total, discount_xof: discount })
 
-  if (discount > 0) {
-    addAudit('discount.granted', 'wash_order', newOrder.id, user.full_name, {
-      amount_xof: discount,
-      reason: req.body.discount_reason || 'Remise accordée',
-      granted_by_role: user.role,
-    })
-  }
-
   res.status(201).json(newOrder)
 })
 
 api.patch('/wash-orders/:id', requireAuth, (req, res) => {
-  const user = (req as any).user as User
   const order = washOrders.find((w) => w.id === req.params.id)
   if (!order) return res.status(404).json({ error: { message: 'Fiche introuvable.' } })
   Object.assign(order, req.body)
   res.json(order)
 })
 
-// Affectation rapide d'un laveur (responsabilité du Gérant)
 api.post('/wash-orders/:id/assign', requireAuth, (req, res) => {
   const user = (req as any).user as User
-  if (user.role === 'washer') {
-    return res.status(403).json({ error: { message: 'Action non autorisée pour ce profil.' } })
-  }
   const order = washOrders.find((w) => w.id === req.params.id)
   if (!order) return res.status(404).json({ error: { message: 'Fiche introuvable.' } })
   const emp = users.find((u) => u.id === req.body.employee_id)
   order.employee_id = req.body.employee_id || ''
   order.employee_name = emp?.full_name || 'Non attribué'
-  addAudit('wash_order.assigned', 'wash_order', order.id, user.full_name, {
-    employee_id: order.employee_id,
-    employee_name: order.employee_name,
-    assigned_by_role: user.role,
-  })
+  addAudit('wash_order.assigned', 'wash_order', order.id, user.full_name)
   res.json(order)
 })
 
 api.post('/wash-orders/:id/cancel', requireAuth, (req, res) => {
   const user = (req as any).user as User
-  // Restriction stricte : le caissier ne peut pas annuler seul sans autorisation gérant
   if (user.role === 'cashier' || user.role === 'washer') {
     return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "L'annulation d'un lavage nécessite l'autorisation du gérant ou du propriétaire de la station.",
-      },
+      error: { code: 'forbidden', message: "L'annulation d'un lavage nécessite l'autorisation du gérant ou du propriétaire." },
     })
   }
   const order = washOrders.find((w) => w.id === req.params.id)
@@ -1700,11 +2946,7 @@ api.post('/wash-orders/:id/cancel', requireAuth, (req, res) => {
   order.status = 'canceled'
   order.cancel_reason = req.body.reason || 'Annulation validée par le gérant'
   order.canceled_at = new Date().toISOString()
-  addAudit('wash_order.canceled', 'wash_order', order.id, user.full_name, {
-    reason: order.cancel_reason,
-    authorized_by: user.full_name,
-    actor_role: user.role,
-  })
+  addAudit('wash_order.canceled', 'wash_order', order.id, user.full_name)
   res.json(order)
 })
 
@@ -1752,6 +2994,28 @@ api.post('/wash-orders/:id/payments', requireAuth, (req, res) => {
 
   addAudit('payment.created', 'payment', payment.id, user.full_name)
   res.json({ order })
+})
+
+api.get('/wash-orders/:id/receipt', requireAuth, (req, res) => {
+  const order = washOrders.find((w) => w.id === req.params.id)
+  const st = stations.find((s) => s.id === order?.station_id) || stations[0]
+  const org = organizations.find((o) => o.id === st.organization_id) || organizations[0]
+  res.json({
+    station_name: st.name,
+    organization_name: org.name,
+    address: st.address,
+    phone: st.phone,
+    receipt_number: order?.reference || 'REC-001',
+    created_at: order?.created_at || new Date().toISOString(),
+    customer_name: order?.customer_name,
+    plate: order?.plate,
+    vehicle_category_name: order?.vehicle_category_name,
+    items: order?.items || [],
+    subtotal_xof: order?.subtotal_xof || 2000,
+    discount_xof: order?.discount_xof || 0,
+    total_xof: order?.total_xof || 2000,
+    footer: st.settings.receipt_footer || 'Merci de votre confiance !',
+  })
 })
 
 // Cash Management
@@ -1871,20 +3135,15 @@ api.post('/cash/sessions/:id/close', requireAuth, (req, res) => {
     expected_xof: session.expected_cash_xof,
     counted_xof: counted,
     difference_xof: session.difference_xof,
-    actor_role: user.role,
   })
   res.json(session)
 })
 
 api.post('/cash/sessions/:id/reopen', requireAuth, (req, res) => {
   const user = (req as any).user as User
-  // Restriction stricte : le caissier ne peut pas rouvrir une caisse déjà clôturée
   if (user.role === 'cashier' || user.role === 'washer') {
     return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "La réouverture d'une caisse déjà clôturée nécessite l'autorisation expresse du gérant ou du propriétaire.",
-      },
+      error: { code: 'forbidden', message: "La réouverture d'une caisse déjà clôturée nécessite l'autorisation du gérant ou du propriétaire." },
     })
   }
   const session = cashSessions.find((s) => s.id === req.params.id)
@@ -1896,11 +3155,7 @@ api.post('/cash/sessions/:id/reopen', requireAuth, (req, res) => {
   session.counted_cash_xof = null
   session.difference_xof = null
 
-  addAudit('cash_session.reopened', 'cash_session', session.id, user.full_name, {
-    reason: req.body.reason || 'Réouverture autorisée par le gérant',
-    authorized_by: user.full_name,
-    actor_role: user.role,
-  })
+  addAudit('cash_session.reopened', 'cash_session', session.id, user.full_name)
   res.json(session)
 })
 
@@ -1996,10 +3251,7 @@ api.post('/cash/payments/:id/void', requireAuth, (req, res) => {
   const user = (req as any).user as User
   if (user.role === 'cashier' || user.role === 'washer') {
     return res.status(403).json({
-      error: {
-        code: 'forbidden',
-        message: "L'annulation ou le remboursement d'un encaissement nécessite l'autorisation du gérant ou du propriétaire.",
-      },
+      error: { code: 'forbidden', message: "L'annulation d'un encaissement nécessite l'autorisation du gérant ou du propriétaire." },
     })
   }
   const p = payments.find((pay) => pay.id === req.params.id)
@@ -2015,12 +3267,7 @@ api.post('/cash/payments/:id/void', requireAuth, (req, res) => {
     session.expected_cash_xof = session.opening_float_xof + session.cash_in_xof - session.expenses_xof
   }
 
-  addAudit('payment.voided', 'payment', p.id, user.full_name, {
-    reason: p.void_reason,
-    amount_xof: p.amount_xof,
-    authorized_by: user.full_name,
-    actor_role: user.role,
-  })
+  addAudit('payment.voided', 'payment', p.id, user.full_name)
   res.json(p)
 })
 
@@ -2123,7 +3370,7 @@ api.post('/expenses/:id/void', requireAuth, (req, res) => {
     session.expected_cash_xof = session.opening_float_xof + session.cash_in_xof - session.expenses_xof
   }
 
-  addAudit('expense.voided', 'expense', exp.id, user.full_name, { reason: req.body.reason })
+  addAudit('expense.voided', 'expense', exp.id, user.full_name)
   res.json(exp)
 })
 
@@ -2383,7 +3630,7 @@ api.get('/commissions', requireAuth, (req, res) => {
       employee_id: emp.id,
       employee_name: emp.full_name,
       role: emp.role,
-      role_label: emp.role === 'owner' ? 'Propriétaire' : emp.role === 'manager' ? 'Gérant' : 'Caissier',
+      role_label: emp.role === 'owner' ? 'Propriétaire' : emp.role === 'manager' ? 'Gérant' : emp.role === 'cashier' ? 'Caissier' : 'Laveur',
       wash_count: empOrders.length,
       revenue_xof: rev,
       mode,
@@ -2399,7 +3646,7 @@ api.get('/commissions', requireAuth, (req, res) => {
   const totalWash = items.reduce((s, it) => s + it.wash_count, 0)
 
   res.json({
-    period: { from: '01/10/2026', to: '13/10/2026' },
+    period: { from: '01/10/2026', to: '14/10/2026' },
     settings: {
       mode: stMode,
       per_wash_xof: stPerWash,
@@ -2412,7 +3659,7 @@ api.get('/commissions', requireAuth, (req, res) => {
       achieved_xof: totalRev,
       remaining_xof: Math.max(0, monthlyGoal - totalRev),
       percent: Math.min(100, Math.round((totalRev / monthlyGoal) * 100)),
-      days_left: 18,
+      days_left: 17,
       reached: totalRev >= monthlyGoal,
     },
     items,
@@ -2426,10 +3673,96 @@ api.get('/commissions', requireAuth, (req, res) => {
 })
 
 api.get('/commissions/export', requireAuth, (_req, res) => {
-  const csvContent = '\uFEFFEmployé;Rôle;Nombre de lavages;Chiffre d\'affaires;Commission XOF\nAwa Traoré;Gérant;24;78000;12000\nMoussa Diomandé;Caissier;32;96000;16000\n'
+  const csvContent = "\uFEFFEmployé;Rôle;Nombre de lavages;Chiffre d'affaires;Commission XOF\nAwa Traoré;Gérant;24;78000;12000\nMoussa Diomandé;Caissier;32;96000;16000\nBakary Koné;Laveur;40;120000;20000\n"
   res.setHeader('Content-Type', 'text/csv; charset=utf-8')
   res.setHeader('Content-Disposition', 'attachment; filename="washguard-commissions.csv"')
   res.send(csvContent)
+})
+
+// Onboarding
+api.get('/onboarding', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const payload = calculateOnboarding(user.organization_id || 'org-demo', user.station_id)
+  res.json(payload)
+})
+
+api.get('/onboarding/summary', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const org = organizations.find((o) => o.id === user.organization_id)
+  const st = stations.find((s) => s.id === user.station_id) || stations[0]
+  const ob = calculateOnboarding(user.organization_id || 'org-demo', user.station_id)
+
+  res.json({
+    ...ob,
+    organization: org,
+    station: st,
+    setup: {
+      services_count: services.filter((s) => s.station_id === st?.id).length,
+      employees_count: users.filter((u) => u.organization_id === user.organization_id).length,
+      categories_count: (st?.vehicle_categories || vehicleCategories).filter((c) => c.is_active).length,
+      usages_count: (st?.vehicle_usages || vehicleUsages).filter((u) => u.is_active).length,
+      opening_days_count: (st?.opening_hours_days || []).filter((d) => d.is_open).length,
+      equipments_count: equipments.filter((e) => e.station_id === st?.id).length,
+    },
+  })
+})
+
+api.patch('/onboarding/steps/:code', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const code = req.params.code
+  const data = req.body.data || {}
+  const st = stations.find((s) => s.id === user.station_id) || stations[0]
+
+  if (code === 'station' && st && data) {
+    if (data.site) st.site = { ...(st.site || getDefaultStationSite(st.name)), ...data.site }
+    if (data.name) st.name = data.name
+    if (data.city) st.city = data.city
+  }
+
+  const updated = calculateOnboarding(user.organization_id || 'org-demo', user.station_id)
+  res.json(updated)
+})
+
+api.post('/onboarding/activate', requireAuth, (req, res) => {
+  const user = (req as any).user as User
+  const org = organizations.find((o) => o.id === user.organization_id)
+  const st = stations.find((s) => s.id === user.station_id) || stations[0]
+
+  const currentOb = calculateOnboarding(user.organization_id || 'org-demo', user.station_id)
+  if (!currentOb.can_activate && currentOb.missing.length > 0) {
+    return res.status(400).json({
+      error: {
+        code: 'preconditions_failed',
+        message: `Certains prérequis obligatoires manquent encore : ${currentOb.missing.map((m) => m.title).join(', ')}.`,
+      },
+    })
+  }
+
+  if (org) org.status = 'active'
+  if (st) st.is_active = true
+
+  addAudit('onboarding.activated', 'station', st?.id || '', user.full_name)
+
+  const activeOb = {
+    ...currentOb,
+    state: 'active' as const,
+    activated: true,
+    already_active: false,
+    message: 'Votre station de lavage est désormais active et opérationnelle !',
+    activated_at: new Date().toISOString(),
+    activated_by: {
+      activated_at: new Date().toISOString(),
+      activated_by: user.id,
+      activated_by_name: user.full_name,
+      snapshot: {
+        organization_name: org?.name,
+        station_name: st?.name,
+        services_count: services.filter((s) => s.station_id === st?.id).length,
+      },
+    },
+  }
+
+  res.json(activeOb)
 })
 
 // Platform Admin Routes
@@ -2502,7 +3835,7 @@ api.get('/platform/organizations/:id', requireAuth, (req, res) => {
       full_name: u.full_name,
       email: u.email,
       role: u.role,
-      role_label: u.role === 'owner' ? 'Propriétaire' : u.role === 'manager' ? 'Gérant' : 'Caissier',
+      role_label: u.role === 'owner' ? 'Propriétaire' : u.role === 'manager' ? 'Gérant' : u.role === 'cashier' ? 'Caissier' : 'Laveur',
       is_active: u.is_active,
       last_login_at: u.last_login_at || null,
     })),
@@ -2520,19 +3853,20 @@ api.patch('/platform/organizations/:id', requireAuth, (req, res) => {
 api.post('/platform/organizations/:id/subscription', requireAuth, (req, res) => {
   const plan = plans.find((p) => p.code === req.body.plan_code)
   if (!plan) return res.status(400).json({ error: { message: 'Formule inconnue.' } })
-  let sub = subscriptions.find((s) => s.organization_id === req.params.id)
-  if (!sub) {
-    sub = {
+  const orgId = String(req.params.id)
+  const existingSub = subscriptions.find((s) => s.organization_id === orgId)
+  if (!existingSub) {
+    const newSub: Subscription = {
       id: `sub-${Date.now()}`,
-      organization_id: req.params.id,
+      organization_id: orgId,
       plan_id: plan.id,
       status: req.body.status || 'active',
       started_at: new Date().toISOString(),
     }
-    subscriptions.push(sub)
+    subscriptions.push(newSub)
   } else {
-    sub.plan_id = plan.id
-    sub.status = req.body.status || 'active'
+    existingSub.plan_id = plan.id
+    existingSub.status = req.body.status || 'active'
   }
   res.json({ message: `Abonnement mis à jour : formule ${plan.name} appliquée.` })
 })
@@ -2564,7 +3898,6 @@ async function startServer() {
   const isProd = process.env.NODE_ENV === 'production'
 
   if (!isProd) {
-    // Dynamic import of Vite in development mode
     const { createServer: createViteServer } = await import('vite')
     const vite = await createViteServer({
       server: { middlewareMode: true },
