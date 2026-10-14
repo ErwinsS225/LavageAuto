@@ -60,11 +60,13 @@ func (a *App) handleWasherTaskStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "validation_error", "Statut requis.", nil)
 		return
 	}
-	// Le laveur ouvre ou termine son lavage : il n'annule pas (rôle du gérant).
-	valid := map[string]bool{"in_progress": true, "completed": true}
+	// Le laveur ouvre son lavage, le déclare fini (contrôle qualité) ou le
+	// clôt : il n'annule pas (rôle du gérant), et il ne déclare jamais une
+	// fiche litigieuse.
+	valid := map[string]bool{"in_progress": true, "quality_check": true, "completed": true}
 	if !valid[body.Status] {
 		writeError(w, http.StatusBadRequest, "validation_error", "Statut non autorisé.",
-			map[string]string{"status": "Valeurs acceptées : in_progress, completed"})
+			map[string]string{"status": "Valeurs acceptées : in_progress, quality_check, completed"})
 		return
 	}
 
@@ -80,6 +82,14 @@ func (a *App) handleWasherTaskStatus(w http.ResponseWriter, r *http.Request) {
 	if currentStatus == "canceled" || currentStatus == "completed" {
 		writeError(w, http.StatusConflict, "conflict",
 			"Cette fiche est déjà close : contactez le gérant pour la corriger.", nil)
+		return
+	}
+	// Le cycle de vie s'applique aussi au portail laveur : on ne saute pas du
+	// contrôle qualité à l'attente, et on ne recule pas depuis une fiche prête.
+	if !transitionAutorisee(currentStatus, body.Status) {
+		writeError(w, http.StatusConflict, "transition_forbidden",
+			"Une fiche « "+libelleStatutLower(currentStatus)+" » ne peut pas passer à « "+
+				libelleStatutLower(body.Status)+" ».", map[string]string{"status": "Transition interdite"})
 		return
 	}
 
@@ -109,10 +119,16 @@ func (a *App) handleWasherTaskStatus(w http.ResponseWriter, r *http.Request) {
 			       started_at = COALESCE(started_at, now())
 			WHERE id = $1 AND organization_id = $2 AND employee_id = $3 AND status = 'pending'`,
 			id, orgID, user.ID)
+	case "quality_check":
+		_, err = a.Pool.Exec(ctx, `
+			UPDATE wash_orders SET status = 'quality_check', quality_checked_at = now()
+			WHERE id = $1 AND organization_id = $2 AND employee_id = $3`,
+			id, orgID, user.ID)
 	case "completed":
 		_, err = a.Pool.Exec(ctx, `
 			UPDATE wash_orders SET status = 'completed',
-			       completed_at = COALESCE(completed_at, now())
+			       completed_at = COALESCE(completed_at, now()),
+			       delivered_at = COALESCE(delivered_at, now())
 			WHERE id = $1 AND organization_id = $2 AND employee_id = $3 AND status <> 'canceled'`,
 			id, orgID, user.ID)
 	}

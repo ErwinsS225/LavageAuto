@@ -194,5 +194,10 @@ ON CONFLICT (station_id, usage_code, category_code) DO UPDATE SET is_active = TR
 	if err := a.equiperMoyensPaiement(ctx, orgID, stationID); err != nil {
 		return err
 	}
+	// Même raison pour les catégories de consommables : une station de
+	// démonstration sans vocabulaire de stock ferait échouer l'étape 12.
+	if err := a.equiperCategoriesStock(ctx, orgID, stationID); err != nil {
+		return err
+	}
 	return nil
 }

@@ -8,12 +8,16 @@
  * valide (notamment pour les horaires, refusés jour par jour).
  */
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { Badge, Button, Card, CardHeader, Field, Input, PageHeader, Select, Spinner } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
 import InvitationsPanel from '@/features/invitations/InvitationsPanel'
+import CommandesForm from '@/features/onboarding/forms/CommandesForm'
 import EntrepriseForm from '@/features/onboarding/forms/EntrepriseForm'
+import EquipeForm from '@/features/onboarding/forms/EquipeForm'
 import HorairesForm from '@/features/onboarding/forms/HorairesForm'
+import MaterielForm from '@/features/onboarding/forms/MaterielForm'
 import StationForm from '@/features/onboarding/forms/StationForm'
 import CashSettingsForm from '@/features/payments/CashSettingsForm'
 import MoyensPanel from '@/features/payments/MoyensPanel'
@@ -25,7 +29,7 @@ import { useStation } from '@/hooks/useStation'
 import { ApiError } from '@/lib/api'
 import { parseAmountInput } from '@/lib/format'
 
-type Onglet = 'station' | 'horaires' | 'caisse' | 'entreprise' | 'invitations'
+type Onglet = 'station' | 'horaires' | 'caisse' | 'entreprise' | 'equipe' | 'materiel' | 'commandes' | 'invitations'
 
 const ONGLETS: Array<{ id: Onglet; label: string; permission?: string }> = [
   { id: 'station', label: 'Station' },
@@ -34,9 +38,19 @@ const ONGLETS: Array<{ id: Onglet; label: string; permission?: string }> = [
   // caissier n'a rien à y faire, et ne verrait donc pas l'onglet.
   { id: 'caisse', label: 'Caisse et reçus', permission: 'settings:view' },
   { id: 'entreprise', label: 'Entreprise' },
+  // Équipe, matériel et règles de commande sont facultatifs à l'activation :
+  // ils doivent donc rester atteignables **après**, sinon l'écran du parcours
+  // serait le seul endroit où l'on peut les remplir — et il disparaît une fois
+  // la station activée.
+  { id: 'equipe', label: 'Équipe', permission: 'employee:view' },
+  { id: 'materiel', label: 'Matériel et stock', permission: 'settings:view' },
+  { id: 'commandes', label: 'Règles des commandes', permission: 'settings:view' },
   // Les invitations ne concernent que ceux qui gèrent l'équipe.
   { id: 'invitations', label: 'Invitations', permission: 'employee:view' },
 ]
+
+/** Les onglets connus, comme liste de contrôle : une adresse inventée retombe sur « Station ». */
+const CODES_ONGLETS = ONGLETS.map((item) => item.id)
 
 export default function SettingsPage() {
   const toast = useToast()
@@ -45,7 +59,21 @@ export default function SettingsPage() {
   usePageTitle('Paramètres')
 
   const canManage = can('settings:manage')
-  const [onglet, setOnglet] = useState<Onglet>('station')
+  // L'onglet vit dans l'adresse (`/parametres?onglet=materiel`) : un lien peut
+  // donc désigner directement la bonne section, et le contrôle de rendu des
+  // pages peut éprouver chacune d'elles sans cliquer.
+  const [parametres, setParametres] = useSearchParams()
+  const ongletDemande = parametres.get('onglet') ?? ''
+  const [onglet, setOnglet] = useState<Onglet>(
+    CODES_ONGLETS.includes(ongletDemande as Onglet) ? (ongletDemande as Onglet) : 'station',
+  )
+
+  function choisirOnglet(suivant: Onglet) {
+    setOnglet(suivant)
+    const prochains = new URLSearchParams(parametres)
+    prochains.set('onglet', suivant)
+    setParametres(prochains, { replace: true })
+  }
   const [version, setVersion] = useState(0)
   const organisation = useOrganisationDetaillee(canManage)
 
@@ -121,7 +149,7 @@ export default function SettingsPage() {
             type="button"
             role="tab"
             aria-selected={onglet === item.id}
-            onClick={() => setOnglet(item.id)}
+            onClick={() => choisirOnglet(item.id)}
             className={'chip ' + (onglet === item.id ? 'chip-active' : '')}
           >
             {item.label}
@@ -206,6 +234,12 @@ export default function SettingsPage() {
           />
         </>
       )}
+
+      {onglet === 'equipe' && stationId && <EquipeForm stationId={stationId} />}
+
+      {onglet === 'materiel' && stationId && <MaterielForm stationId={stationId} />}
+
+      {onglet === 'commandes' && stationId && <CommandesForm stationId={stationId} />}
 
       {onglet === 'invitations' && <InvitationsPanel />}
 

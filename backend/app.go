@@ -13,12 +13,17 @@ type App struct {
 
 // rolePermissions reprend la matrice de server.ts : chaque rôle a sa liste
 // de permissions, contrôlée côté serveur et côté frontend.
+//
+// `employee:compensation` est portée par le propriétaire (et le support) : un
+// gérant compose son équipe, il ne fixe pas les salaires. C'est une donnée
+// personnelle qui n'a pas à circuler avec les droits de gestion d'équipe.
 var rolePermissions = map[string][]string{
 	"superadmin": {
 		"dashboard:view", "station:view", "wash:view", "wash:create", "wash:update", "wash:cancel", "wash:assign",
 		"payment:view", "payment:create", "payment:void", "payment:create_deferred",
 		"service:view", "service:manage",
 		"customer:view", "customer:create", "customer:manage", "employee:view", "employee:manage",
+		"employee:compensation",
 		"cash:view", "cash:open", "cash:close", "cash:reopen", "expense:view", "expense:create",
 		"expense:void", "report:view", "report:export", "commission:view", "commission:manage", "settings:view",
 		"settings:manage", "organization:manage", "subscription:view", "subscription:manage",
@@ -29,6 +34,7 @@ var rolePermissions = map[string][]string{
 		"payment:view", "payment:create", "payment:void", "payment:create_deferred",
 		"service:view", "service:manage",
 		"customer:view", "customer:create", "customer:manage", "employee:view", "employee:manage",
+		"employee:compensation",
 		"cash:view", "cash:open", "cash:close", "cash:reopen", "expense:view", "expense:create",
 		"expense:void", "report:view", "report:export", "commission:view", "commission:manage", "settings:view",
 		"settings:manage", "organization:manage", "subscription:view", "subscription:manage",

@@ -92,14 +92,20 @@ enregistrées (station active, téléphone de l'entreprise, prix des prestations
 Le client n'annonce jamais qu'une étape est faite : `PATCH` refuse
 `state = "completed"` et `POST /onboarding/activate` revérifie tout.
 
-Le parcours compte **dix étapes** : `espace`, `entreprise`, `station`,
+Le parcours compte **treize étapes** : `espace`, `entreprise`, `station`,
 `horaires`, `categories`, `usages`, `prestations`, `options`, `tarifs`,
-`moyens`. Chaque étape indique le formulaire qui l'alimente (`"form"` :
-`entreprise`, `station`, `horaires`, `vehicules`, `usages`, `prestations`,
-`options`, `tarifs`, `moyens` — `espace` n'en a pas, il décrit ce qui existe
-déjà) et ce qui est constaté (`"detail"`). Une étape facultative non remplie
-(usages, options, capacités, localisation) est signalée dans `detail` sans
-bloquer l'activation.
+`moyens`, `equipe`, `materiel`, `commandes`. Chaque étape indique le formulaire
+qui l'alimente (`"form"` : `entreprise`, `station`, `horaires`, `vehicules`,
+`usages`, `prestations`, `options`, `tarifs`, `moyens`, `equipe`, `materiel`,
+`commandes` — `espace` n'en a pas, il décrit ce qui existe déjà) et ce qui est
+constaté (`"detail"`). Une étape facultative non remplie (usages, options,
+capacités, localisation) est signalée dans `detail` sans bloquer l'activation.
+
+Depuis le lot 7, les trois dernières étapes — **équipe** (personnel), **matériel**
+(équipements et stock) et **commandes** (règles de fonctionnement) — portent
+`required: false` : une station équipée d'un seau et d'une éponge doit pouvoir
+ouvrir. Elles se remplissent après l'activation, depuis les Paramètres, sans
+rien perdre de leur constat.
 
 | Permission | Route |
 | --- | --- |
@@ -325,6 +331,23 @@ le détail de ses options même après désactivation.
 | session | `GET /employees/options` (liste des laveurs pour les formulaires) |
 | `employee:view` | `GET /employees`, `GET /employees/{id}/activity` |
 | `employee:manage` | `POST /employees`, `PATCH /employees/{id}`, `POST /employees/{id}/reset-password` |
+| `employee:compensation` | écriture du barème (`commission_mode`, `commission_per_wash_xof`, `commission_percent`) |
+
+La fiche de poste d'un employé porte `job_title`, `hired_on`, `work_schedule`
+et `employment_status` (`active`, `on_leave`, `departed`) — facultatifs, du
+ressort de `employee:manage` — et, à part, le **barème de rémunération** :
+`commission_mode` (`none`, `per_wash`, `percent` ; absent = celui de la
+station), `commission_per_wash_xof`, `commission_percent`.
+
+**La rémunération est une donnée réservée.** Elle demande la permission
+`employee:compensation` (propriétaire et support, **pas** gérant) : un compte
+sans cette permission reçoit `403` sur toute écriture de barème, et les champs
+`commission_*` ne sont pas renvoyés dans la liste. Les autres champs de la fiche
+de poste restent lisibles par `employee:view`.
+
+**Le congé n'est pas une sanction** : `employment_status = "on_leave"` décrit
+une situation RH et laisse l'accès ouvert ; seul `is_active = false` ferme la
+porte. Une valeur inconnue est refusée (`400 validation_error`).
 
 ### Lavages
 
@@ -332,7 +355,7 @@ le détail de ses options même après désactivation.
 | --- | --- |
 | `wash:view` | `GET /wash-orders`, `GET /wash-orders/{id}` |
 | `wash:create` | `POST /wash-orders` |
-| `wash:update` | `PATCH /wash-orders/{id}` |
+| `wash:update` | `PATCH /wash-orders/{id}` (dont le changement de statut, contrôlé par le graphe du cycle de vie) |
 | `wash:assign` | `POST /wash-orders/{id}/assign` |
 | `wash:cancel` | `POST /wash-orders/{id}/cancel` |
 | `payment:create` | `POST /wash-orders/{id}/payments` |
@@ -352,6 +375,58 @@ le client : `unit_price_xof` n'existe pas côté requête.
 avec un autre `vehicle_category_id` (ou `vehicle_usage_id`) repasse par le
 moteur de prix et met à jour les lignes. Une fiche déjà encaissée dont le total
 bougerait est refusée (`409 conflict`) : le paiement reste la référence.
+
+### Matériel et stock
+
+| Permission | Route |
+| --- | --- |
+| `settings:view` | `GET /stations/{id}/equipment` (parc de la station) |
+| `settings:manage` | `POST /stations/{id}/equipment`, `PUT /equipment/{id}`, `GET /stations/{id}/equipment/templates` |
+| `settings:view` | `GET /stations/{id}/stock`, `GET /stock/items/{id}` |
+| `settings:manage` | `POST /stations/{id}/stock/items`, `PUT /stock/items/{id}`, `POST /stock/items/{id}/movements` |
+
+**Équipements.** `GET /stations/{id}/equipment/templates` sert le référentiel des
+matériels (identique pour toutes les entreprises) ; l'ajout se fait soit à
+partir d'un modèle (`template_code`), soit librement (`name`). Un engagement
+explicite : **une quantité n'est pas une unité — on n'efface jamais du
+matériel**, `is_active = false` conserve la fiche dans l'historique et la sort
+du parc en service (`summary.en_service`, `summary.hors_service`).
+
+**Stock.** Ce qui distingue ce module d'une simple liste, c'est l'état
+`quantity_known`. Un article déclaré sans quantité porte
+`quantity_known: false` : le serveur refuse alors toute sortie
+(`409 stock_quantity_unknown`) et ne compte pas de rupture — *« je ne sais pas
+encore »* n'est pas *« zéro »*. Une quantité ne s'écrit pas à la main
+(`409 stock_movement_required`) : elle change par un mouvement
+(`entrée`, `sortie`, `inventaire`, `perte`), et chaque mouvement d'un article
+renvoie `quantity_after`. Une perte ou une casse exige un motif
+(`400 validation_error`). `GET /stations/{id}/stock` renvoie `items`, `summary`
+(`rupture`, `quantite_inconnue`, valeur XOF) et `categories`.
+
+### Règles de fonctionnement des commandes
+
+| Permission | Route |
+| --- | --- |
+| `settings:view` | `GET /stations/{id}/order-rules` |
+| `settings:manage` | `PUT /stations/{id}/order-rules` |
+
+Sept réglages, lus **là où le serveur décide** — création de la fiche,
+encaissement, changement de statut, annulation :
+
+| Réglage (défaut) | Effet mesurable |
+| --- | --- |
+| `allow_walk_in` (`true`) | `false` ⇒ fiche sans client enregistré refusée (`400 walk_in_not_allowed`) |
+| `require_washer` (`false`) | `true` ⇒ fiche sans laveur refusée (`400 washer_required`) |
+| `max_open_orders_per_washer` (`0`) | au-delà ⇒ `409 washer_queue_full`, libéré dès qu'une fiche se ferme |
+| `quality_check_required` (`false`) | `true` ⇒ passage direct à `ready` refusé (`409 quality_check_required`) |
+| `release_requires_payment` (`true`) | `true` ⇒ remise du véhicule impossible avant solde (`409 payment_required`) |
+| `allow_partial_payments` (`true`) | `false` ⇒ acompte refusé (`409 partial_payment_disabled`), sur la fiche **et** au guichet |
+| `require_cancel_reason` (`true`) | `true` ⇒ annulation sans motif refusée (`400 validation_error` sur `reason`) |
+
+La réponse expose aussi `statuses` : les **sept états** du cycle de vie d'un
+véhicule et leurs libellés, pour que l'écran n'invente pas ses propres mots.
+Une transition non prévue par le graphe est refusée (`409 transition_forbidden`),
+un état final le reste, et un statut inconnu est refusé en `400`.
 
 ### Caisse et paiements
 

@@ -21,6 +21,7 @@ import { useUsageCategories, useVehicleOptions } from '@/features/vehicle-catego
 import { pricePreviewOptions } from '@/features/services/pricing-api'
 import { useStationServices } from '@/features/services/api'
 import { ApiError } from '@/lib/api'
+import { washStatusLabel, washTransitionsFrom } from '@/lib/constants'
 import { parseAmountInput } from '@/lib/format'
 import type { WashOrder, WashStatus } from '@/types'
 
@@ -66,6 +67,22 @@ export default function WashOrderForm({
   const [plate, setPlate] = useState(order?.plate ?? '')
   const [employeeId, setEmployeeId] = useState(order?.employee_id ?? '')
   const [status, setStatus] = useState<WashStatus>(order?.status ?? 'in_progress')
+
+  // Options de statut : le statut actuel, plus les transitions que le cycle de
+  // vie autorise depuis lui. Pour une nouvelle fiche, les deux seuls départs
+  // possibles (« reçue » ou « en cours »).
+  const optionsStatut = useMemo(() => {
+    const libelle = (code: WashStatus) => ({
+      value: code,
+      label: washStatusLabel(code),
+    })
+    if (!order) {
+      return [libelle('pending'), libelle('in_progress')]
+    }
+    const ouvertes = washTransitionsFrom(order.status).map(libelle)
+    if (ouvertes.some((option) => option.value === order.status)) return ouvertes
+    return [libelle(order.status), ...ouvertes]
+  }, [order])
   const [discount, setDiscount] = useState(order?.discount_xof ?? 0)
   const [discountReason, setDiscountReason] = useState(order?.discount_reason ?? '')
   const [notes, setNotes] = useState(order?.notes ?? '')
@@ -339,17 +356,23 @@ export default function WashOrderForm({
             />
           )}
         </Field>
-        <Field label="Statut">
+        {/* Statut : seules les flèches ouvertes sont proposées. Le graphe est
+            celui du serveur (backend/order_rules.go) — s'il refusait malgré
+            tout, le motif s'afficherait en clair. */}
+        <Field
+          label="Statut"
+          hint={
+            order
+              ? 'Le statut ne peut pas revenir en arrière au-delà de ce que le cycle autorise.'
+              : undefined
+          }
+        >
           {(id) => (
             <Select
               id={id}
               value={status}
               onChange={(event) => setStatus(event.target.value as WashStatus)}
-              options={[
-                { value: 'in_progress', label: 'En cours' },
-                { value: 'completed', label: 'Terminé' },
-                { value: 'pending', label: 'En attente' },
-              ]}
+              options={optionsStatut}
             />
           )}
         </Field>

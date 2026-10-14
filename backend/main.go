@@ -274,6 +274,27 @@ func (a *App) buildRouter() http.Handler {
 	mux.HandleFunc("GET /api/v1/stations/{id}/cash-settings", a.requirePermission("cash:view", a.handleCashSettingsRead))
 	mux.HandleFunc("PUT /api/v1/stations/{id}/cash-settings", a.requirePermission("settings:manage", a.handleCashSettingsUpdate))
 
+	// Matériel de la station : le référentiel des modèles, les équipements
+	// déclarés, et leur retrait (désactivation, jamais suppression).
+	mux.HandleFunc("GET /api/v1/stations/{id}/equipment", a.requirePermission("settings:view", a.handleEquipmentList))
+	mux.HandleFunc("POST /api/v1/stations/{id}/equipment", a.requirePermission("settings:manage", a.handleEquipmentCreate))
+	mux.HandleFunc("PATCH /api/v1/equipment/{id}", a.requirePermission("settings:manage", a.handleEquipmentUpdate))
+
+	// Stock : catégories amorcées, articles, seuils, mouvements. La quantité
+	// ne s'écrit pas à la main : elle bouge par un mouvement, qui laisse une
+	// trace lisible.
+	mux.HandleFunc("GET /api/v1/stations/{id}/stock", a.requirePermission("settings:view", a.handleStockList))
+	mux.HandleFunc("POST /api/v1/stations/{id}/stock/items", a.requirePermission("settings:manage", a.handleStockItemCreate))
+	mux.HandleFunc("PATCH /api/v1/stock/items/{id}", a.requirePermission("settings:manage", a.handleStockItemUpdate))
+	mux.HandleFunc("GET /api/v1/stock/items/{id}/movements", a.requirePermission("settings:view", a.handleStockMovements))
+	mux.HandleFunc("POST /api/v1/stock/items/{id}/movements", a.requirePermission("settings:manage", a.handleStockMovementCreate))
+
+	// Règles de fonctionnement des commandes : ce que la station accepte
+	// (clients de passage, laveur obligatoire, contrôle qualité, acomptes,
+	// remise du véhicule) — chacune appliquée par le serveur.
+	mux.HandleFunc("GET /api/v1/stations/{id}/order-rules", a.requirePermission("settings:view", a.handleOrderRulesRead))
+	mux.HandleFunc("PUT /api/v1/stations/{id}/order-rules", a.requirePermission("settings:manage", a.handleOrderRulesUpdate))
+
 	mux.HandleFunc("GET /api/v1/expenses", a.requirePermission("expense:view", a.handleExpensesList))
 	mux.HandleFunc("POST /api/v1/expenses", a.requirePermission("expense:create", a.requireOnboarding(a.handleExpenseCreate)))
 	mux.HandleFunc("PATCH /api/v1/expenses/{id}", a.requirePermission("expense:approve", a.handleExpenseUpdate))

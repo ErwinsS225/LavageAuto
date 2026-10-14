@@ -153,6 +153,39 @@ var catalogueOnboarding = []onboardingStep{
 		Hint:     "Aucun moyen de paiement n'est actif : activez au moins les espèces.",
 		Form:     "moyens",
 	},
+	{
+		Code:  "equipe",
+		Title: "Équipe",
+		Description: "Qui travaille à la station — un compte par personne, avec sa fonction, " +
+			"sa date d'arrivée et ses horaires.",
+		// Facultatif à l'activation : une station qui démarre seule, tenue par
+		// son propriétaire, est parfaitement viable. Le compte du propriétaire
+		// existe déjà, l'étape est donc souvent franchie d'elle-même.
+		Required: false,
+		Screen:   "/employes",
+		Hint:     "Aucun compte d'équipe : la station fonctionne avec votre seul accès.",
+		Form:     "equipe",
+	},
+	{
+		Code:  "materiel",
+		Title: "Matériel et stock",
+		Description: "Ce que la station possède (jets, aspirateurs, groupes) et ce qu'elle " +
+			"consomme (produits, consommables) — avec la possibilité de dire « je ne sais pas encore ».",
+		Required: false,
+		Screen:   "/onboarding",
+		Hint:     "Aucun matériel ni article de stock déclaré : l'écran propose le référentiel de la station.",
+		Form:     "materiel",
+	},
+	{
+		Code:  "commandes",
+		Title: "Règles des commandes",
+		Description: "Comment un véhicule circule dans la station : clients de passage, " +
+			"laveur obligatoire, contrôle qualité, remise subordonnée au paiement, acomptes.",
+		Required: false,
+		Screen:   "/onboarding",
+		Hint:     "Les règles par défaut s'appliquent : clients de passage acceptés, contrôle qualité facultatif, véhicule remis une fois la fiche soldée.",
+		Form:     "commandes",
+	},
 }
 
 // etapeParCode retrouve une étape du catalogue.
@@ -187,6 +220,10 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		orgName, orgPhone, orgCity string
 		stations                   int
 		proprietaires              int
+		equipe                     int
+		equipementsDeclares        int
+		articlesStock              int
+		articlesNonComptes         int
 		prestations                int
 		prestationsTarifees        int
 		optionsDeclarees           int
@@ -289,6 +326,27 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		return nil, err
 	}
 
+	// L'équipe : les comptes rattachés à l'entreprise, propriétaire compris
+	// (c'est la première personne de l'équipe).
+	err = a.Pool.QueryRow(ctx, `
+		SELECT count(*) FROM users
+		WHERE organization_id = $1 AND is_active AND role <> 'superadmin'`, orgID).Scan(&equipe)
+	if err != nil {
+		return nil, err
+	}
+
+	// Matériel et stock de la station de référence. Un article « non compté »
+	// compte comme déclaré : l'exploitant a bien répondu, sa réponse est
+	// « je ne sais pas encore ».
+	if stationID != "" {
+		_ = a.Pool.QueryRow(ctx, `
+			SELECT
+			  (SELECT count(*) FROM equipments WHERE station_id = $1 AND is_active),
+			  (SELECT count(*) FROM stock_items WHERE station_id = $1 AND is_active),
+			  (SELECT count(*) FROM stock_items WHERE station_id = $1 AND is_active AND NOT quantity_known)`,
+			stationID).Scan(&equipementsDeclares, &articlesStock, &articlesNonComptes)
+	}
+
 	// Les options et suppléments : facultatifs, mais l'étape doit dire ce qui
 	// est réellement déclaré plutôt que d'afficher « terminée » sans rien.
 	err = a.Pool.QueryRow(ctx, `
@@ -296,6 +354,15 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		WHERE organization_id = $1 AND is_active`, orgID).Scan(&optionsDeclarees)
 	if err != nil {
 		return nil, err
+	}
+
+	// Les règles de commande de la station de référence : l'étape les résume
+	// au lieu d'afficher « fait » sans dire lesquelles s'appliquent.
+	reglesCommandesStation := reglesParDefaut()
+	if stationID != "" {
+		if regles, err := a.lireReglesCommandes(ctx, stationID); err == nil {
+			reglesCommandesStation = regles
+		}
 	}
 
 	points := make([]pointOnboarding, 0, len(catalogueOnboarding))
@@ -368,10 +435,74 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		case "moyens":
 			point.Done = moyensActifs > 0
 			point.Detail = plural(moyensActifs, "moyen de paiement actif", "moyens de paiement actifs")
+		case "equipe":
+			point.Done = equipe > 0
+			point.Detail = plural(equipe, "compte actif", "comptes actifs")
+			if equipe <= 1 {
+				point.Detail += " — vous seul pour l'instant"
+			}
+		case "materiel":
+			point.Done = equipementsDeclares > 0 || articlesStock > 0
+			morceaux := []string{}
+			if equipementsDeclares > 0 {
+				morceaux = append(morceaux, plural(equipementsDeclares, "équipement", "équipements"))
+			}
+			if articlesStock > 0 {
+				texte := plural(articlesStock, "article de stock", "articles de stock")
+				if articlesNonComptes > 0 && articlesNonComptes < articlesStock {
+					texte += " (dont " + itoa(articlesNonComptes) + " non compté(s))"
+				} else if articlesNonComptes == articlesStock {
+					texte = plural(articlesStock, "article de stock non compté", "articles de stock non comptés")
+				}
+				morceaux = append(morceaux, texte)
+			}
+			if len(morceaux) == 0 {
+				point.Detail = "Rien de déclaré : ni matériel, ni article de stock"
+			} else {
+				point.Detail = strings.Join(morceaux, " · ")
+			}
+		case "commandes":
+			// L'étape est un choix, pas une obligation : les règles par défaut
+			// ont toujours une valeur, donc l'étape est toujours satisfaite.
+			// Ce qui compte, c'est de dire **lesquelles** s'appliquent.
+			point.Done = true
+			point.Detail = resumeReglesCommandes(reglesCommandesStation)
 		}
 		points = append(points, point)
 	}
 	return points, nil
+}
+
+// resumeReglesCommandes : les règles en vigueur, dites simplement, pour la
+// ligne « Constaté » de l'étape. Une règle absente de ce résumé serait une
+// règle que l'exploitant ne saurait pas voir.
+func resumeReglesCommandes(regles reglesCommandes) string {
+	morceaux := []string{}
+	if regles.AllowWalkIn {
+		morceaux = append(morceaux, "clients de passage acceptés")
+	} else {
+		morceaux = append(morceaux, "client enregistré obligatoire")
+	}
+	if regles.RequireWasher {
+		morceaux = append(morceaux, "laveur obligatoire dès la création")
+	}
+	if regles.QualityCheckRequired {
+		morceaux = append(morceaux, "contrôle qualité obligatoire")
+	}
+	if regles.ReleaseRequiresPayment {
+		morceaux = append(morceaux, "véhicule remis une fois la fiche soldée")
+	} else {
+		morceaux = append(morceaux, "remise possible avant paiement")
+	}
+	if regles.AllowPartialPayments {
+		morceaux = append(morceaux, "acomptes acceptés")
+	} else {
+		morceaux = append(morceaux, "règlement en une fois")
+	}
+	if regles.MaxOpenOrdersPerWasher > 0 {
+		morceaux = append(morceaux, "au plus "+itoa(regles.MaxOpenOrdersPerWasher)+" fiche(s) par laveur")
+	}
+	return strings.Join(morceaux, " · ")
 }
 
 // champ : un libellé et sa valeur, pour la ligne « Constaté » de l'interface.

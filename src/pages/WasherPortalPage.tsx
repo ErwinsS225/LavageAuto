@@ -15,6 +15,7 @@ import {
 
 import { Button, Card, EmptyState, Modal, ScreenHero, Segmented, Spinner, StatCard, Textarea } from '@/components/ui'
 import { useToast } from '@/components/Toaster'
+import { ApiError } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { formatNumber, formatTime, formatXOF } from '@/lib/format'
 import {
@@ -52,24 +53,36 @@ export default function WasherPortalPage() {
   const todayStr = new Date().toISOString().slice(0, 10)
 
   // Filter tasks
-  const pendingTasks = tasks.filter((t) => t.status === 'pending' || t.status === 'in_progress')
+  // « En cours » au sens du laveur : tout ce qui n'est pas encore livré, y
+  // compris le contrôle qualité et un véhicule prêt qui attend son client.
+  const enCours = ['pending', 'in_progress', 'quality_check', 'ready', 'disputed']
+  const pendingTasks = tasks.filter((t) => enCours.includes(t.status))
   const todayCompletedTasks = tasks.filter((t) => t.status === 'completed' && t.business_day === todayStr)
   const allTasks = tasks
 
   const displayedTasks =
     activeTab === 'pending' ? pendingTasks : activeTab === 'completed' ? todayCompletedTasks : allTasks
 
-  async function handleStatusChange(task: WasherTask, nextStatus: 'in_progress' | 'completed') {
+  async function handleStatusChange(
+    task: WasherTask,
+    nextStatus: 'in_progress' | 'quality_check' | 'completed',
+  ) {
     setUpdatingId(task.id)
     try {
       await statusMutation.mutateAsync({ id: task.id, status: nextStatus })
       if (nextStatus === 'in_progress') {
         toast.success(`Véhicule ${task.plate || task.reference} pris en charge ! Bon lavage.`)
+      } else if (nextStatus === 'quality_check') {
+        toast.success(`Lavage terminé pour ${task.plate || task.reference} : véhicule au contrôle qualité.`)
       } else {
-        toast.success(`Lavage terminé pour ${task.plate || task.reference} ! Prêt pour inspection.`)
+        toast.success(`Fiche ${task.reference} clôturée.`)
       }
-    } catch {
-      toast.error("Impossible de mettre à jour l'avancement.")
+    } catch (caught) {
+      // Le serveur explique son refus (fiche non encaissée, transition
+      // interdite…) : on le laisse parler plutôt que d'inventer une raison.
+      toast.error(
+        caught instanceof ApiError ? caught.message : "Impossible de mettre à jour l'avancement.",
+      )
     } finally {
       setUpdatingId(null)
     }
@@ -192,6 +205,8 @@ export default function WasherPortalPage() {
             const isPending = task.status === 'pending'
             const isInProgress = task.status === 'in_progress'
             const isCompleted = task.status === 'completed'
+            const isQualityCheck = task.status === 'quality_check'
+            const isReady = task.status === 'ready'
             const isUpdating = updatingId === task.id
 
             return (
@@ -313,15 +328,42 @@ export default function WasherPortalPage() {
                       )}
 
                       {isInProgress && (
+                        <>
+                          <Button
+                            variant="primary"
+                            loading={isUpdating}
+                            icon={<CheckCircle2 size={16} />}
+                            onClick={() => void handleStatusChange(task, 'quality_check')}
+                            className="min-w-44 bg-success text-white hover:bg-emerald-600 text-sm font-bold"
+                          >
+                            Lavage terminé
+                          </Button>
+                          {/* Clôturer une fiche suppose qu'elle soit encaissée :
+                              le serveur refuse sinon, avec le montant restant. */}
+                          <Button
+                            variant="ghost"
+                            loading={isUpdating}
+                            onClick={() => void handleStatusChange(task, 'completed')}
+                          >
+                            Clôturer la fiche
+                          </Button>
+                        </>
+                      )}
+
+                      {isQualityCheck && (
                         <Button
-                          variant="primary"
+                          variant="ghost"
                           loading={isUpdating}
-                          icon={<CheckCircle2 size={16} />}
-                          onClick={() => void handleStatusChange(task, 'completed')}
-                          className="min-w-44 bg-success text-white hover:bg-emerald-600 text-sm font-bold"
+                          onClick={() => void handleStatusChange(task, 'in_progress')}
                         >
-                          Terminer le lavage
+                          Reprendre le lavage
                         </Button>
+                      )}
+
+                      {isReady && (
+                        <span className="text-xs font-medium text-ink-muted">
+                          Véhicule prêt : remise au client par la caisse.
+                        </span>
                       )}
 
                       {isCompleted && (

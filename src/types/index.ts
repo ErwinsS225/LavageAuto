@@ -1,7 +1,22 @@
 // Types partagés avec l'API Go (les noms de champs suivent le backend).
 
 export type Role = 'superadmin' | 'owner' | 'manager' | 'cashier' | 'washer'
-export type WashStatus = 'pending' | 'in_progress' | 'completed' | 'canceled'
+/**
+ * Cycle de vie d'une fiche de lavage.
+ *
+ * « Reçue » et « En attente » sont un seul état (`pending`) : la réception est
+ * l'acte de création de la fiche. Le graphe des transitions autorisées est
+ * décrit dans `src/lib/constants.ts` et appliqué par le serveur — l'interface
+ * ne fait que proposer les flèches ouvertes.
+ */
+export type WashStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'quality_check'
+  | 'ready'
+  | 'completed'
+  | 'canceled'
+  | 'disputed'
 /**
  * Famille **canonique** d'un encaissement : c'est elle, et non le libellé
  * commercial, qui décide du compteur de caisse touché. `differe` désigne un
@@ -594,6 +609,160 @@ export interface CustomerDetail {
   }>
 }
 
+/**
+ * Un matériel de la station. Aucun champ n'est obligatoire au-delà du nom :
+ * une date inconnue reste vide, et l'écran écrit « non renseigné » — jamais
+ * une date inventée.
+ */
+export interface Equipment {
+  id: string
+  station_id: string
+  template_code?: string | null
+  name: string
+  family: string
+  family_label: string
+  quantity: number
+  state: EquipmentState
+  state_label: string
+  acquired_on?: string | null
+  last_service_on?: string | null
+  next_service_on?: string | null
+  cost_xof: number
+  notes: string
+  is_active: boolean
+  /** Maintenance à échéance (date de passage atteinte). */
+  service_due: boolean
+}
+
+export type EquipmentState = 'neuf' | 'bon' | 'a_reparer' | 'hors_service'
+
+export interface EquipmentTemplate {
+  code: string
+  name: string
+  family: string
+  family_label: string
+  sort_order: number
+}
+
+export interface EquipmentResponse {
+  station_id: string
+  templates: EquipmentTemplate[]
+  items: Equipment[]
+  families: Record<string, string>
+  states: Record<string, string>
+  summary: {
+    total: number
+    en_service: number
+    a_reparer: number
+    hors_service: number
+    retires: number
+    valeur_xof: number
+    maintenance_a_prevoir: number
+  }
+}
+
+/**
+ * Un article de stock. `quantity_known` est la colonne qui compte :
+ * `false` veut dire « personne n'a encore compté » — ce n'est pas zéro, et
+ * aucune alerte de rupture n'est affichée dans ce cas.
+ */
+export interface StockItem {
+  id: string
+  station_id: string
+  category_code: string
+  category_name: string
+  name: string
+  internal_code: string
+  unit: string
+  quantity_known: boolean
+  quantity: number
+  unit_cost_xof: number
+  min_quantity?: number | null
+  supplier: string
+  location: string
+  expires_on?: string | null
+  notes: string
+  is_active: boolean
+  /** Calculée sur les seules quantités connues (0 sinon). */
+  value_xof: number
+  state: 'inconnu' | 'rupture' | 'seuil' | 'peremption' | 'ok'
+  state_label: string
+  expires_soon: boolean
+  movements_count: number
+}
+
+export interface StockCategory {
+  code: string
+  name: string
+  sort_order: number
+  is_active: boolean
+}
+
+export interface StockResponse {
+  station_id: string
+  categories: StockCategory[]
+  items: StockItem[]
+  summary: {
+    articles: number
+    rupture: number
+    sous_seuil: number
+    quantite_inconnue: number
+    valeur_xof: number
+  }
+}
+
+export type StockMovementKind = 'entree' | 'sortie' | 'inventaire' | 'ajustement' | 'perte'
+
+export interface StockMovement {
+  id: string
+  kind: StockMovementKind
+  kind_label: string
+  delta: number
+  counted?: number | null
+  /** `null` tant que la quantité n'est pas connue : on n'invente pas un chiffre. */
+  quantity_after?: number | null
+  quantity_known: boolean
+  unit_cost_xof: number
+  reason: string
+  created_by_name: string
+  created_at: string
+}
+
+/** Règles de fonctionnement des commandes d'une station. */
+export interface OrderRules {
+  allow_walk_in: boolean
+  require_washer: boolean
+  quality_check_required: boolean
+  release_requires_payment: boolean
+  allow_partial_payments: boolean
+  require_cancel_reason: boolean
+  max_open_orders_per_washer: number
+}
+
+export interface OrderRulesResponse {
+  station_id: string
+  rules: OrderRules
+  labels: Record<string, string>
+  statuses?: WashStatusInfo[]
+}
+
+export interface WashStatusInfo {
+  code: WashStatus
+  label: string
+  terminal: boolean
+  description: string
+}
+
+/** Situation RH d'un employé — distincte de son accès applicatif. */
+export type EmploymentStatus = 'active' | 'on_leave' | 'departed'
+
+export interface EmployeeCompensation {
+  mode: '' | 'none' | 'per_wash' | 'percent'
+  mode_label: string
+  per_wash_xof?: number | null
+  percent?: number | null
+}
+
 export interface Employee {
   id: string
   full_name: string
@@ -618,6 +787,19 @@ export interface Employee {
   commission_mode?: CommissionMode | null
   commission_per_wash_xof?: number | null
   commission_percent?: number | null
+  /** Fonction exercée (« Caissière principale »), facultative. */
+  job_title?: string
+  /** Date d'arrivée (AAAA-MM-JJ), facultative. */
+  hired_on?: string | null
+  /** Horaires de la personne, texte libre : descriptif, pas un planning. */
+  work_schedule?: string
+  employment_status?: EmploymentStatus
+  employment_status_label?: string
+  /**
+   * Données de rémunération. `null` (ou absent) quand l'appelant n'a pas la
+   * permission dédiée : l'écran le dit au lieu d'afficher des zéros.
+   */
+  compensation?: EmployeeCompensation | null
 }
 
 export interface WashOrderItem {

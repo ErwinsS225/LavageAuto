@@ -10,6 +10,8 @@ import { ApiError } from '@/lib/api'
 import {
   commissionRateLabel,
   EMPLOYEE_COMMISSION_MODES,
+  EMPLOYMENT_STATUSES,
+  employmentStatusLabel,
   ROLES,
   roleLabel,
   washStatusLabel,
@@ -25,7 +27,7 @@ import {
   startOfMonth,
   today,
 } from '@/lib/format'
-import type { CommissionMode, Employee, Role } from '@/types'
+import type { CommissionMode, Employee, EmploymentStatus, Role } from '@/types'
 
 /**
  * Choix du formulaire de commission : « station » (le cas normal) ou une
@@ -52,6 +54,10 @@ export default function EmployeesPage() {
     email: string
     phone: string
     role: Role
+    job_title: string
+    hired_on: string
+    work_schedule: string
+    employment_status: EmploymentStatus
     commission_mode: CommissionChoice
     commission_per_wash: number
     commission_percent: number
@@ -60,6 +66,10 @@ export default function EmployeesPage() {
     email: '',
     phone: '',
     role: 'cashier',
+    job_title: '',
+    hired_on: '',
+    work_schedule: '',
+    employment_status: 'active',
     commission_mode: 'station',
     commission_per_wash: 0,
     commission_percent: 0,
@@ -89,6 +99,10 @@ export default function EmployeesPage() {
       email: employee?.email ?? '',
       phone: employee?.phone ?? '',
       role: employee?.role ?? 'cashier',
+      job_title: employee?.job_title ?? '',
+      hired_on: employee?.hired_on ?? '',
+      work_schedule: employee?.work_schedule ?? '',
+      employment_status: employee?.employment_status ?? 'active',
       // `null` côté serveur = « suit le barème de la station », ce que le
       // formulaire traduit par le choix « station ».
       commission_mode: employee?.commission_mode ?? 'station',
@@ -110,6 +124,17 @@ export default function EmployeesPage() {
     // NOTE: ne pas typer « bareme » comme EmployeeInput, qui contient obligatoirement
     // `full_name` — ce qui provoquerait un conflit quand on diffuse ...bareme
     // dans un objet qui lance déjà `full_name`.
+    // Profil de la personne : une valeur vide signifie « non renseigné » et
+    // n'est pas envoyée — sinon modifier un rôle effacerait la date d'embauche.
+    const profil: Pick<
+      EmployeeInput,
+      'job_title' | 'hired_on' | 'work_schedule' | 'employment_status'
+    > = {
+      job_title: form.job_title.trim() || undefined,
+      hired_on: form.hired_on || undefined,
+      work_schedule: form.work_schedule.trim() || undefined,
+      employment_status: form.employment_status,
+    }
     const bareme: Pick<EmployeeInput, 'commission_mode' | 'commission_per_wash_xof' | 'commission_percent'> = {
       commission_mode: form.commission_mode === 'station' ? undefined : form.commission_mode,
       commission_per_wash_xof: form.commission_per_wash,
@@ -123,6 +148,7 @@ export default function EmployeesPage() {
           phone: form.phone,
           role: form.role,
           station_id: stationId || undefined,
+          ...profil,
           ...bareme,
         })
         toast.success('Employé mis à jour.')
@@ -135,6 +161,7 @@ export default function EmployeesPage() {
         phone: form.phone,
         role: form.role,
         station_id: stationId || undefined,
+        ...profil,
         ...bareme,
       })
       setFormOpen(false)
@@ -303,6 +330,7 @@ export default function EmployeesPage() {
                       <button type="button" className="cursor-pointer text-left" onClick={() => setActivityId(employee.id)}>
                         <span className="font-medium text-ink hover:text-brand">{employee.full_name}</span>
                         <span className="block text-xs text-ink-muted">
+                          {employee.job_title ? `${employee.job_title} · ` : ''}
                           {employee.email}
                           {employee.phone ? ` · ${employee.phone}` : ''}
                         </span>
@@ -336,9 +364,18 @@ export default function EmployeesPage() {
                       {employee.last_login_at ? formatDateTime(employee.last_login_at) : 'Jamais connecté'}
                     </td>
                     <td>
-                      <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-neutral'}`}>
-                        {employee.is_active ? 'Actif' : 'Désactivé'}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-neutral'}`}>
+                          {employee.is_active ? 'Actif' : 'Désactivé'}
+                        </span>
+                        {/* Situation RH : le congé ne coupe pas la connexion, et
+                            personne ne doit confondre les deux. */}
+                        {employee.employment_status && employee.employment_status !== 'active' ? (
+                          <span className="badge badge-warning">
+                            {employmentStatusLabel(employee.employment_status)}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td>
                       <div className="flex justify-end gap-1">
@@ -459,6 +496,84 @@ export default function EmployeesPage() {
               )
             }}
           </Field>
+
+          {/* Profil de la personne : décrit le poste, pas les droits. Un laveur
+              en congé garde son accès ; un laveur parti le perd, mais son
+              historique de lavages reste. */}
+          <div className="panel p-3">
+            <p className="mb-3 text-sm font-semibold text-ink">Poste occupé</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Intitulé du poste"
+                hint="Le métier réel : « Laveur moto », « Caissière du soir »…"
+                error={fields.job_title}
+              >
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={form.job_title}
+                    onChange={(event) => setForm({ ...form, job_title: event.target.value })}
+                    placeholder="Ex : Laveur automobile"
+                    invalid={Boolean(fields.job_title)}
+                  />
+                )}
+              </Field>
+              <Field
+                label="Date d’arrivée"
+                hint="Facultative : sert à suivre l’ancienneté dans l’équipe."
+                error={fields.hired_on}
+              >
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="date"
+                    value={form.hired_on}
+                    onChange={(event) => setForm({ ...form, hired_on: event.target.value })}
+                    invalid={Boolean(fields.hired_on)}
+                  />
+                )}
+              </Field>
+            </div>
+            <div className="mt-3">
+              <Field
+                label="Horaires habituels"
+                hint="Texte libre : « Lundi au samedi, 7 h – 18 h »."
+                error={fields.work_schedule}
+              >
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={form.work_schedule}
+                    onChange={(event) => setForm({ ...form, work_schedule: event.target.value })}
+                    placeholder="Lundi au samedi, 7 h – 18 h"
+                    invalid={Boolean(fields.work_schedule)}
+                  />
+                )}
+              </Field>
+            </div>
+            <div className="mt-3">
+              <Field
+                label="Situation"
+                hint="« En poste », « En congé » ou « Parti ». Le congé ne coupe pas l’accès : utilisez « Désactiver » pour cela."
+                error={fields.employment_status}
+              >
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={form.employment_status}
+                    onChange={(event) =>
+                      setForm({ ...form, employment_status: event.target.value as EmploymentStatus })
+                    }
+                    options={EMPLOYMENT_STATUSES.map((situation) => ({
+                      value: situation.id,
+                      label: situation.label,
+                    }))}
+                    invalid={Boolean(fields.employment_status)}
+                  />
+                )}
+              </Field>
+            </div>
+          </div>
 
           <div className="panel p-3">
             <Field

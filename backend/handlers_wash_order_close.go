@@ -33,7 +33,12 @@ func (a *App) handleWashOrderCancel(w http.ResponseWriter, r *http.Request) {
 		Reason string `json:"reason"`
 	}
 	_ = decodeBody(r, &body)
-	if len(body.Reason) < 3 {
+	// Le motif est exigé par défaut (comportement historique) ; une station
+	// peut décider de ne pas l'exiger — c'est alors sa règle qui s'applique,
+	// pas une obligation générale du logiciel.
+	regles, errRegles := a.lireReglesCommandes(ctx, order.StationID)
+	exigeMotif := errRegles == nil && regles.RequireCancelReason
+	if exigeMotif && len(body.Reason) < 3 {
 		writeError(w, http.StatusBadRequest, "validation_error",
 			"Un motif d'annulation est obligatoire.", map[string]string{"reason": "Motif requis"})
 		return
@@ -139,6 +144,14 @@ func (a *App) handleWashOrderPayment(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		writeAPIError(w, err)
+		return
+	}
+
+	// Acomptes : la station peut exiger un règlement en une fois. La règle est
+	// lue à la station de la fiche — pas à celle de l'utilisateur — et le moyen
+	// est déjà résolu, donc un engagement de paiement n'est pas concerné.
+	if refus := a.verifierAcompte(ctx, order.StationID, method, amount, due); refus != nil {
+		writeAPIError(w, refus)
 		return
 	}
 

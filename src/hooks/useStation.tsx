@@ -8,6 +8,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
+import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import type { Station } from '@/types'
 
@@ -85,7 +86,12 @@ export function useStation(): StationContextValue {
 }
 
 export function StationProvider({ children }: { children: ReactNode }) {
-  const [stationId, setStationId] = useState<string>(() => {
+  // La station de la session (`/auth/me`) est connue **avant** la liste des
+  // stations. Elle sert de repli : sans lui, un écran qui a besoin d'un
+  // identifiant de station restait vide le temps du second appel — ou
+  // définitivement si la liste ne se chargeait pas.
+  const { me } = useAuth()
+  const [stationChoisie, setStationId] = useState<string>(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) ?? ''
     } catch {
@@ -102,13 +108,15 @@ export function StationProvider({ children }: { children: ReactNode }) {
   })
   const stations = useMemo(() => query.data ?? [], [query.data])
 
+  const stationId = stationChoisie || me?.station?.id || ''
+
   // Aucun choix explicite : la station marquée par défaut, sinon la première.
   useEffect(() => {
-    if (stationId && stations.some((station) => station.id === stationId)) return
+    if (stationChoisie && stations.some((station) => station.id === stationChoisie)) return
     if (stations.length === 0) return
     const fallback = stations.find((station) => station.is_default) ?? stations[0]
     if (fallback) setStationId(fallback.id)
-  }, [stationId, stations])
+  }, [stationChoisie, stations])
 
   const selectStation = useCallback((id: string) => {
     setStationId(id)
@@ -122,8 +130,16 @@ export function StationProvider({ children }: { children: ReactNode }) {
   const station = stations.find((item) => item.id === stationId) ?? null
 
   const value = useMemo<StationContextValue>(
-    () => ({ stationId, station, stations, selectStation, loading: query.isLoading }),
-    [stationId, station, stations, selectStation, query.isLoading],
+    () => ({
+      stationId,
+      // La station complète n'existe que dans la liste ; le repli de session ne
+      // fournit que l'identifiant, donc `station` peut rester null un instant.
+      station: station ?? me?.station ?? null,
+      stations,
+      selectStation,
+      loading: query.isLoading,
+    }),
+    [stationId, station, stations, selectStation, query.isLoading, me],
   )
 
   return <StationContext.Provider value={value}>{children}</StationContext.Provider>

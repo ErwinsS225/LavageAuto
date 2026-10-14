@@ -104,9 +104,17 @@ func (a *App) preparerReferentiels(ctx context.Context) error {
 	if err := a.preparerCataloguePrestations(ctx); err != nil {
 		return err
 	}
-	// Moyens de paiement : le référentiel est posé pour chaque station, sans
-	// écraser un renommage ni réactiver un moyen volontairement désactivé.
-	return a.assurerMoyensPaiement(ctx)
+	// Modèles d'équipements (référentiel global) : présents dès le premier
+	// démarrage, sans écraser un renommage local.
+	if err := a.assurerModelesEquipements(ctx); err != nil {
+		return err
+	}
+	// Moyens de paiement et catégories de stock : posés pour chaque station,
+	// sans écraser un renommage ni réactiver une ligne désactivée.
+	if err := a.assurerMoyensPaiement(ctx); err != nil {
+		return err
+	}
+	return a.assurerCategoriesStock(ctx)
 }
 
 // assurerCatalogueVehicules met le référentiel à jour, à chaque démarrage.

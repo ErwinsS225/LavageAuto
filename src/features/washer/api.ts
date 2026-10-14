@@ -40,7 +40,9 @@ export function useWasherPerformance() {
 export function useUpdateTaskStatus() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: 'in_progress' | 'completed' }) =>
+    // Le laveur ouvre son lavage, le déclare terminé (contrôle qualité) ou
+    // clôture une fiche déjà encaissée. Il n'annule jamais : c'est le gérant.
+    mutationFn: ({ id, status }: { id: string; status: 'in_progress' | 'quality_check' | 'completed' }) =>
       api.post<WasherTask>(`/washer/tasks/${id}/status`, { status }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: washerTasksKey })

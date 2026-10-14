@@ -53,11 +53,12 @@ check("la session est reconnue sans cookie", code == 200 and me.get("user", {}).
 
 code, onboard, _ = appel("GET", "/onboarding", jeton=jeton)
 etapes = [e.get("code") for e in (onboard or {}).get("steps", [])]
-check("l'état de la mise en route est lisible", code == 200 and len(etapes) == 10,
+check("l'état de la mise en route est lisible", code == 200 and len(etapes) == 13,
       f"http={code} étapes={len(etapes)}")
-check("les dix étapes sont celles annoncées",
+check("les treize étapes sont celles annoncées",
       etapes == ["espace", "entreprise", "station", "horaires", "categories", "usages",
-                 "prestations", "options", "tarifs", "moyens"], str(etapes))
+                 "prestations", "options", "tarifs", "moyens", "equipe", "materiel",
+                 "commandes"], str(etapes))
 
 # 3. Un compte neuf encaisse dès le premier jour : les espèces sont actives.
 station = (me or {}).get("station", {}).get("id", "")

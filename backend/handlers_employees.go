@@ -58,9 +58,15 @@ func (a *App) handleEmployeesList(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, err)
 		return
 	}
+	// La rémunération n'est lue que pour qui a le droit de la voir : les
+	// colonnes ne sortent pas de la base inutilement.
+	peutRemunerer := hasPermission(user, "employee:compensation")
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT id, full_name, email, phone, role, station_id, is_active, last_login_at, created_at,
-		       commission_mode, commission_per_wash_xof, commission_percent,
+		       job_title, hired_on::text, work_schedule, employment_status,
+		       CASE WHEN $5 THEN commission_mode END,
+		       CASE WHEN $5 THEN commission_per_wash_xof END,
+		       CASE WHEN $5 THEN commission_percent END,
 		       (SELECT count(*) FROM wash_orders w WHERE w.employee_id = u.id AND w.status = 'completed' AND w.business_day = $2) AS washes_today,
 		       (SELECT count(*) FROM wash_orders w WHERE w.employee_id = u.id AND w.status = 'completed' AND w.business_day >= $3) AS washes_month,
 		       (SELECT COALESCE(sum(total_xof),0) FROM wash_orders w WHERE w.employee_id = u.id AND w.status = 'completed' AND w.business_day >= $3) AS revenue_month,
@@ -70,7 +76,8 @@ func (a *App) handleEmployeesList(w http.ResponseWriter, r *http.Request) {
 		FROM users u
 		WHERE organization_id = $1
 		  AND ($4 = '' OR station_id = $4)
-		ORDER BY full_name`, deref(user.OrganizationID), businessDay(time.Now()), monthStart, stationFilter)
+		ORDER BY full_name`, deref(user.OrganizationID), businessDay(time.Now()), monthStart, stationFilter,
+		peutRemunerer)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
 		return
@@ -79,32 +86,61 @@ func (a *App) handleEmployeesList(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	for rows.Next() {
 		var id, fullName, email, phone, role string
+		var jobTitle, workSchedule, employmentStatus string
 		var stationID *string
 		var isActive bool
 		var lastLogin, createdAt *time.Time
+		var hiredOn *string
 		var commMode *string
 		var commPerWash *int
 		var commPercent *float64
 		var washesToday, washesMonth, revenueMonth, collectedMonth int
 		if err := rows.Scan(&id, &fullName, &email, &phone, &role, &stationID, &isActive,
-			&lastLogin, &createdAt, &commMode, &commPerWash, &commPercent,
+			&lastLogin, &createdAt, &jobTitle, &hiredOn, &workSchedule, &employmentStatus,
+			&commMode, &commPerWash, &commPercent,
 			&washesToday, &washesMonth, &revenueMonth, &collectedMonth); err != nil {
 			continue
 		}
-		items = append(items, map[string]any{
+		fiche := map[string]any{
 			"id": id, "full_name": fullName, "email": email, "phone": phone,
 			"role": role, "role_label": roleLabelFR(role),
 			"station_id": stationID, "is_active": isActive, "last_login_at": lastLogin,
 			"created_at":              createdAt,
+			"job_title":               jobTitle,
+			"hired_on":                hiredOn,
+			"work_schedule":           workSchedule,
+			"employment_status":       employmentStatus,
+			"employment_status_label": nomSituationEmploye(employmentStatus),
 			"washes_today":            washesToday,
 			"washes_month":            washesMonth,
 			"revenue_today_xof":       washesTodayRevenue(a, r, id),
 			"revenue_month_xof":       revenueMonth,
 			"collected_month_xof":     collectedMonth,
-			"commission_mode":         commMode,
-			"commission_per_wash_xof": commPerWash,
-			"commission_percent":      commPercent,
-		})
+			// `compensation` est la seule porte d'entrée des données salariales :
+			// elle est absente de la réponse (et non vide) sans la permission.
+			"compensation": nil,
+		}
+		if peutRemunerer {
+			mode := ""
+			if commMode != nil {
+				mode = *commMode
+			}
+			libelle := ""
+			if mode != "" {
+				libelle = libellesModeRemuneration[mode]
+			}
+			// Les champs à plat restent exposés : les écrans existants les
+			// lisent déjà. `compensation` les regroupe et dit clairement ce que
+			// l'appelant a le droit de voir.
+			fiche["commission_mode"] = commMode
+			fiche["commission_per_wash_xof"] = commPerWash
+			fiche["commission_percent"] = commPercent
+			fiche["compensation"] = map[string]any{
+				"mode": mode, "mode_label": libelle,
+				"per_wash_xof": commPerWash, "percent": commPercent,
+			}
+		}
+		items = append(items, fiche)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items,
@@ -114,6 +150,11 @@ func (a *App) handleEmployeesList(w http.ResponseWriter, r *http.Request) {
 			{"id": "cashier", "label": "Caissier", "description": "Enregistrement des lavages et encaissement."},
 			{"id": "washer", "label": "Laveur", "description": "Prise en charge des véhicules et signalement des incidents."},
 		},
+		// Vocabulaire affiché par l'écran : situations d'un employé, modes de
+		// rémunération, et si l'appelant peut voir la rémunération.
+		"employment_statuses":   libellesSituationEmploye,
+		"compensation_modes":    libellesModeRemuneration,
+		"can_view_compensation": peutRemunerer,
 	})
 }
 

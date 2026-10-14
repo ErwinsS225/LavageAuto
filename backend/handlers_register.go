@@ -153,6 +153,11 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if err := a.equiperMoyensPaiement(ctx, orgID, stationID); err != nil {
 		log.Printf("[inscription] moyens de paiement non équipés pour %s : %v", orgID, err)
 	}
+	// Idem pour les catégories de consommables : l'étape « stock » du parcours
+	// propose un vocabulaire, jamais une liste vide.
+	if err := a.equiperCategoriesStock(ctx, orgID, stationID); err != nil {
+		log.Printf("[inscription] catégories de stock non équipées pour %s : %v", orgID, err)
+	}
 
 	token := newToken()
 	_ = a.createSession(ctx, token, userID)

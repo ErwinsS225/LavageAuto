@@ -115,47 +115,48 @@ func (a *App) handleWashOrderUpdate(w http.ResponseWriter, r *http.Request) {
 			map[string]any{"amount_xof": body.DiscountXOF, "reason": body.DiscountReason, "granted_by_role": user.Role})
 	}
 
-	// Statut : seuls des transitions explicites sont acceptées.
+	// Statut : le cycle de vie est un graphe, et les règles de la station
+	// décident des cas particuliers (contrôle qualité obligatoire, remise
+	// subordonnée au paiement, litige motivé). L'interface propose les flèches
+	// autorisées, le serveur les vérifie — c'est lui qui décide.
 	if body.Status != "" && body.Status != order.Status {
 		if encaissement && body.Status != "completed" {
 			writeError(w, http.StatusConflict, "conflict",
 				"Cette fiche porte un encaissement : son statut ne peut plus revenir en arrière.", nil)
 			return
 		}
-		switch body.Status {
-		case "pending", "in_progress":
-			// retour en atelier : autorisé
-		case "completed":
-			_, _, due, err := a.soldeFiche(r, id, deref(user.OrganizationID))
-			if err != nil {
-				writeAPIError(w, err)
-				return
-			}
-			if due > 0 {
-				writeError(w, http.StatusConflict, "conflict",
-					fmt.Sprintf("Il reste %d FCFA à encaisser avant de clore cette fiche.", due), nil)
-				return
-			}
-			add("completed_at", "now()")
-		case "canceled":
-			if !hasPermission(user, "wash:cancel") {
-				writeError(w, http.StatusForbidden, "forbidden",
-					"L'annulation d'un lavage nécessite l'accord du gérant.", nil)
-				return
-			}
-			if strings.TrimSpace(body.DiscountReason) == "" && strings.TrimSpace(deref(order.CancelReason)) == "" {
-				writeError(w, http.StatusBadRequest, "validation_error",
-					"Une annulation doit être motivée.", map[string]string{"reason": "Motif requis"})
-				return
-			}
-		default:
-			writeError(w, http.StatusBadRequest, "validation_error", "Statut inconnu.",
-				map[string]string{"status": "Statut invalide"})
+		regles, err := a.lireReglesCommandes(ctx, order.StationID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
 			return
 		}
-		if body.Status == "completed" {
-			setClauses = append(setClauses, "status = 'completed'", "completed_at = COALESCE(completed_at, now())")
-		} else {
+		// Le motif peut arriver sous « reason » (annulation, litige) ou sous
+		// « discount_reason », nom historique du même champ sur cette route.
+		motif := strings.TrimSpace(orDefault(body.Reason, orDefault(body.DisputeReason, body.DiscountReason)))
+		if refus := a.verifierTransitionFiche(ctx, order, body.Status, regles, motif, user); refus != nil {
+			writeAPIError(w, refus)
+			return
+		}
+		switch body.Status {
+		case "completed":
+			setClauses = append(setClauses, "status = 'completed'",
+				"completed_at = COALESCE(completed_at, now())",
+				"delivered_at = COALESCE(delivered_at, now())")
+		case "quality_check":
+			setClauses = append(setClauses, "status = 'quality_check'",
+				"quality_checked_at = now()")
+		case "ready":
+			setClauses = append(setClauses, "status = 'ready'", "ready_at = now()")
+		case "disputed":
+			add("status", "disputed")
+			add("dispute_reason", motif)
+		case "canceled":
+			add("status", "canceled")
+			add("canceled_at", "now()")
+			if motif != "" {
+				add("cancel_reason", motif)
+			}
+		default:
 			add("status", body.Status)
 		}
 	}

@@ -120,6 +120,10 @@ func (a *App) handleStationCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de l'installation des moyens de paiement.", nil)
 		return
 	}
+	if err := a.equiperCategoriesStock(r.Context(), deref(user.OrganizationID), id); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de l'installation des catégories de stock.", nil)
+		return
+	}
 	a.addAudit(r.Context(), deref(user.OrganizationID), id, user.FullName, "station.created", "station", id, nil)
 	st, _ := a.getStation(r.Context(), id)
 	writeJSON(w, http.StatusCreated, stationToJSON(st))

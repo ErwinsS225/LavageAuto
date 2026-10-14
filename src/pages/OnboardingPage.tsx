@@ -18,6 +18,9 @@ import { useOrganisationDetaillee, useStationProfile } from '@/features/profile/
 import { useActivateOnboarding, useOnboarding } from '@/features/onboarding/api'
 import EntrepriseForm from '@/features/onboarding/forms/EntrepriseForm'
 import HorairesForm from '@/features/onboarding/forms/HorairesForm'
+import MaterielForm from '@/features/onboarding/forms/MaterielForm'
+import EquipeForm from '@/features/onboarding/forms/EquipeForm'
+import CommandesForm from '@/features/onboarding/forms/CommandesForm'
 import MoyensForm from '@/features/onboarding/forms/MoyensForm'
 import OptionsForm from '@/features/onboarding/forms/OptionsForm'
 import PrestationsForm from '@/features/onboarding/forms/PrestationsForm'
@@ -235,6 +238,15 @@ export default function OnboardingPage() {
                   ville={stations.find((item) => item.id === stationCourante)?.city}
                   onEnregistre={() => apresEnregistrement(etape.code)}
                 />
+              )}
+              {etape.form === 'equipe' && stationCourante && (
+                <EquipeForm stationId={stationCourante} />
+              )}
+              {etape.form === 'materiel' && stationCourante && (
+                <MaterielForm stationId={stationCourante} />
+              )}
+              {etape.form === 'commandes' && stationCourante && (
+                <CommandesForm stationId={stationCourante} />
               )}
               {/* Étape « espace » : rien à saisir, mais deux chemins possibles.
                   Celui de l'invitation n'est pas dans ce parcours — il se vit

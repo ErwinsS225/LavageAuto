@@ -1,5 +1,11 @@
 import { formatXOF } from '@/lib/format'
-import type { CommissionMode, PaymentMethod, Role, WashStatus } from '@/types'
+import type {
+  CommissionMode,
+  EmploymentStatus,
+  PaymentMethod,
+  Role,
+  WashStatus,
+} from '@/types'
 
 export interface Labeled {
   id: string
@@ -30,12 +36,54 @@ export function methodLabel(method: PaymentMethod | string): string {
 }
 
 /** Statuts d'une fiche de lavage. */
-export const WASH_STATUSES: Array<{ id: WashStatus; label: string; tone: string }> = [
-  { id: 'pending', label: 'En attente', tone: 'badge-warning' },
-  { id: 'in_progress', label: 'En cours', tone: 'badge-brand' },
-  { id: 'completed', label: 'Terminé', tone: 'badge-success' },
-  { id: 'canceled', label: 'Annulé', tone: 'badge-danger' },
+/**
+ * Situation RH d'un employé, distincte de son accès à l'application
+ * (`is_active`) : quelqu'un en congé garde son accès, quelqu'un qui est parti
+ * ne l'a plus. Libellés identiques à ceux du serveur
+ * (backend/employees_profile.go), pour qu'un écran et une erreur parlent de
+ * la même chose.
+ */
+export const EMPLOYMENT_STATUSES: Array<{ id: EmploymentStatus; label: string }> = [
+  { id: 'active', label: 'En poste' },
+  { id: 'on_leave', label: 'En congé' },
+  { id: 'departed', label: 'Parti' },
 ]
+
+/** Situation RH d'un employé, avec repli sur le code brut si elle est inconnue. */
+export function employmentStatusLabel(status: EmploymentStatus | null | undefined): string {
+  if (!status) return 'En poste'
+  return EMPLOYMENT_STATUSES.find((item) => item.id === status)?.label ?? status
+}
+
+export const WASH_STATUSES: Array<{ id: WashStatus; label: string; tone: string }> = [
+  { id: 'pending', label: 'Reçue, en attente', tone: 'badge-warning' },
+  { id: 'in_progress', label: 'En cours de lavage', tone: 'badge-brand' },
+  { id: 'quality_check', label: 'Contrôle qualité', tone: 'badge-info' },
+  { id: 'ready', label: 'Prête', tone: 'badge-info' },
+  { id: 'completed', label: 'Livrée, soldée', tone: 'badge-success' },
+  { id: 'disputed', label: 'En litige', tone: 'badge-warning' },
+  { id: 'canceled', label: 'Annulée', tone: 'badge-danger' },
+]
+
+/**
+ * Transitions ouvertes depuis un statut — la copie fidèle du graphe appliqué
+ * par le serveur (`backend/order_rules.go`). L'interface s'en sert pour ne
+ * proposer que des flèches réelles ; si les deux listes divergeaient, le
+ * serveur refuserait quand même, avec un motif.
+ */
+export const WASH_TRANSITIONS: Record<WashStatus, WashStatus[]> = {
+  pending: ['in_progress', 'quality_check', 'ready', 'completed', 'canceled', 'disputed'],
+  in_progress: ['pending', 'quality_check', 'ready', 'completed', 'canceled', 'disputed'],
+  quality_check: ['in_progress', 'ready', 'completed', 'canceled', 'disputed'],
+  ready: ['in_progress', 'quality_check', 'completed', 'canceled', 'disputed'],
+  disputed: ['in_progress', 'quality_check', 'ready', 'completed', 'canceled'],
+  completed: ['disputed'],
+  canceled: [],
+}
+
+export function washTransitionsFrom(status: WashStatus | string): WashStatus[] {
+  return WASH_TRANSITIONS[status as WashStatus] ?? []
+}
 
 export function washStatusLabel(status: WashStatus | string): string {
   return WASH_STATUSES.find((item) => item.id === status)?.label ?? status

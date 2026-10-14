@@ -169,6 +169,12 @@ func (a *App) handlePaymentCreate(w http.ResponseWriter, r *http.Request) {
 				map[string]string{"amount_xof": "Montant supérieur au solde restant dû"})
 			return
 		}
+		// Acomptes : la même règle que sur /wash-orders/{id}/payments, lue à la
+		// station de la fiche. Un moyen différé n'est pas un encaissement.
+		if refus := a.verifierAcompte(ctx, orderStation, method, body.AmountXOF, due); refus != nil {
+			writeAPIError(w, refus)
+			return
+		}
 		orderPtr = &body.WashOrderID
 	}
 	if body.CustomerID != "" {

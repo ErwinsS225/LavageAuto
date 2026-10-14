@@ -972,7 +972,304 @@ const PAGES = [
       ],
       "must_change_password": false
     }
+  },
+{
+  "chemin": "/parametres?onglet=equipe",
+  "attendu": "Équipe de la station",
+  "session": {
+    "user": {
+      "id": "usr-1",
+      "full_name": "Propriétaire Test",
+      "email": "owner@test.local",
+      "phone": "",
+      "role": "owner",
+      "role_label": "Propriétaire",
+      "organization_id": "org-1",
+      "station_id": "stn-1"
+    },
+    "organization": {
+      "id": "org-1",
+      "name": "Station Test",
+      "slug": "station-test",
+      "email": "",
+      "phone": "",
+      "address": "",
+      "city": "Abidjan",
+      "country": "Côte d'Ivoire",
+      "currency": "XOF",
+      "timezone": "Africa/Abidjan",
+      "logo_url": "",
+      "status": "active",
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    "station": {
+      "id": "stn-1",
+      "organization_id": "org-1",
+      "name": "Station Centrale",
+      "code": "CEN",
+      "city": "Abidjan",
+      "is_default": true,
+      "is_active": true,
+      "settings": {
+        "max_cashier_discount_xof": 1000,
+        "require_open_cash_session": true,
+        "monthly_goal_xof": 0,
+        "receipt_footer": "",
+        "commission_mode": "per_wash",
+        "commission_per_wash_xof": 500
+      }
+    },
+    "subscription": {
+      "plan_id": "plan-essai",
+      "plan_name": "Essai",
+      "status": "trialing",
+      "trial_ends_at": "2026-12-31T00:00:00Z",
+      "current_period_end": "2026-12-31T00:00:00Z",
+      "limits": {
+        "stations": 1,
+        "users": 5,
+        "washes_per_month": 100,
+        "features": []
+      }
+    },
+    "permissions": [
+      "dashboard:view",
+      "station:view",
+      "wash:view",
+      "wash:create",
+      "wash:update",
+      "wash:cancel",
+      "wash:assign",
+      "payment:view",
+      "payment:create",
+      "payment:void",
+      "service:view",
+      "service:manage",
+      "customer:view",
+      "customer:create",
+      "customer:manage",
+      "employee:view",
+      "employee:manage",
+      "cash:view",
+      "cash:open",
+      "cash:close",
+      "cash:reopen",
+      "expense:view",
+      "expense:create",
+      "expense:void",
+      "report:view",
+      "report:export",
+      "commission:view",
+      "commission:manage",
+      "settings:view",
+      "settings:manage",
+      "organization:manage",
+      "subscription:view",
+      "subscription:manage",
+      "audit:view",
+      "washer:view"
+    ],
+    "must_change_password": false
   }
+},
+{
+  "chemin": "/parametres?onglet=materiel",
+  "attendu": "Matériel de la station",
+  "session": {
+    "user": {
+      "id": "usr-1",
+      "full_name": "Propriétaire Test",
+      "email": "owner@test.local",
+      "phone": "",
+      "role": "owner",
+      "role_label": "Propriétaire",
+      "organization_id": "org-1",
+      "station_id": "stn-1"
+    },
+    "organization": {
+      "id": "org-1",
+      "name": "Station Test",
+      "slug": "station-test",
+      "email": "",
+      "phone": "",
+      "address": "",
+      "city": "Abidjan",
+      "country": "Côte d'Ivoire",
+      "currency": "XOF",
+      "timezone": "Africa/Abidjan",
+      "logo_url": "",
+      "status": "active",
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    "station": {
+      "id": "stn-1",
+      "organization_id": "org-1",
+      "name": "Station Centrale",
+      "code": "CEN",
+      "city": "Abidjan",
+      "is_default": true,
+      "is_active": true,
+      "settings": {
+        "max_cashier_discount_xof": 1000,
+        "require_open_cash_session": true,
+        "monthly_goal_xof": 0,
+        "receipt_footer": "",
+        "commission_mode": "per_wash",
+        "commission_per_wash_xof": 500
+      }
+    },
+    "subscription": {
+      "plan_id": "plan-essai",
+      "plan_name": "Essai",
+      "status": "trialing",
+      "trial_ends_at": "2026-12-31T00:00:00Z",
+      "current_period_end": "2026-12-31T00:00:00Z",
+      "limits": {
+        "stations": 1,
+        "users": 5,
+        "washes_per_month": 100,
+        "features": []
+      }
+    },
+    "permissions": [
+      "dashboard:view",
+      "station:view",
+      "wash:view",
+      "wash:create",
+      "wash:update",
+      "wash:cancel",
+      "wash:assign",
+      "payment:view",
+      "payment:create",
+      "payment:void",
+      "service:view",
+      "service:manage",
+      "customer:view",
+      "customer:create",
+      "customer:manage",
+      "employee:view",
+      "employee:manage",
+      "cash:view",
+      "cash:open",
+      "cash:close",
+      "cash:reopen",
+      "expense:view",
+      "expense:create",
+      "expense:void",
+      "report:view",
+      "report:export",
+      "commission:view",
+      "commission:manage",
+      "settings:view",
+      "settings:manage",
+      "organization:manage",
+      "subscription:view",
+      "subscription:manage",
+      "audit:view",
+      "washer:view"
+    ],
+    "must_change_password": false
+  }
+},
+{
+  "chemin": "/parametres?onglet=commandes",
+  "attendu": "Comment un véhicule circule dans la station",
+  "session": {
+    "user": {
+      "id": "usr-1",
+      "full_name": "Propriétaire Test",
+      "email": "owner@test.local",
+      "phone": "",
+      "role": "owner",
+      "role_label": "Propriétaire",
+      "organization_id": "org-1",
+      "station_id": "stn-1"
+    },
+    "organization": {
+      "id": "org-1",
+      "name": "Station Test",
+      "slug": "station-test",
+      "email": "",
+      "phone": "",
+      "address": "",
+      "city": "Abidjan",
+      "country": "Côte d'Ivoire",
+      "currency": "XOF",
+      "timezone": "Africa/Abidjan",
+      "logo_url": "",
+      "status": "active",
+      "created_at": "2026-01-01T00:00:00Z"
+    },
+    "station": {
+      "id": "stn-1",
+      "organization_id": "org-1",
+      "name": "Station Centrale",
+      "code": "CEN",
+      "city": "Abidjan",
+      "is_default": true,
+      "is_active": true,
+      "settings": {
+        "max_cashier_discount_xof": 1000,
+        "require_open_cash_session": true,
+        "monthly_goal_xof": 0,
+        "receipt_footer": "",
+        "commission_mode": "per_wash",
+        "commission_per_wash_xof": 500
+      }
+    },
+    "subscription": {
+      "plan_id": "plan-essai",
+      "plan_name": "Essai",
+      "status": "trialing",
+      "trial_ends_at": "2026-12-31T00:00:00Z",
+      "current_period_end": "2026-12-31T00:00:00Z",
+      "limits": {
+        "stations": 1,
+        "users": 5,
+        "washes_per_month": 100,
+        "features": []
+      }
+    },
+    "permissions": [
+      "dashboard:view",
+      "station:view",
+      "wash:view",
+      "wash:create",
+      "wash:update",
+      "wash:cancel",
+      "wash:assign",
+      "payment:view",
+      "payment:create",
+      "payment:void",
+      "service:view",
+      "service:manage",
+      "customer:view",
+      "customer:create",
+      "customer:manage",
+      "employee:view",
+      "employee:manage",
+      "cash:view",
+      "cash:open",
+      "cash:close",
+      "cash:reopen",
+      "expense:view",
+      "expense:create",
+      "expense:void",
+      "report:view",
+      "report:export",
+      "commission:view",
+      "commission:manage",
+      "settings:view",
+      "settings:manage",
+      "organization:manage",
+      "subscription:view",
+      "subscription:manage",
+      "audit:view",
+      "washer:view"
+    ],
+    "must_change_password": false
+  }
+}
 ]
 
 

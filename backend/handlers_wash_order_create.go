@@ -28,18 +28,23 @@ type orderItemInput struct {
 
 // washOrderDraft corps de la requête de création de fiche.
 type washOrderDraft struct {
-	StationID         string           `json:"station_id"`
-	CustomerID        string           `json:"customer_id"`
-	CustomerName      string           `json:"customer_name"`
-	VehicleCategoryID string           `json:"vehicle_category_id"`
-	VehicleUsageID    string           `json:"vehicle_usage_id"`
-	Plate             string           `json:"plate"`
-	EmployeeID        string           `json:"employee_id"`
-	DiscountXOF       int              `json:"discount_xof"`
-	DiscountReason    string           `json:"discount_reason"`
-	Notes             string           `json:"notes"`
-	Status            string           `json:"status"`
-	Items             []orderItemInput `json:"items"`
+	StationID         string `json:"station_id"`
+	CustomerID        string `json:"customer_id"`
+	CustomerName      string `json:"customer_name"`
+	VehicleCategoryID string `json:"vehicle_category_id"`
+	VehicleUsageID    string `json:"vehicle_usage_id"`
+	Plate             string `json:"plate"`
+	EmployeeID        string `json:"employee_id"`
+	DiscountXOF       int    `json:"discount_xof"`
+	DiscountReason    string `json:"discount_reason"`
+	Notes             string `json:"notes"`
+	Status            string `json:"status"`
+	// Motif d'un changement de statut : annulation (`reason`) ou litige
+	// (`dispute_reason`). Deux noms parce que ce sont deux actes différents,
+	// lus au même endroit.
+	Reason        string           `json:"reason"`
+	DisputeReason string           `json:"dispute_reason"`
+	Items         []orderItemInput `json:"items"`
 }
 
 // pricedItem prestation après résolution du prix : le montant retenu **et** la
@@ -294,6 +299,42 @@ func (a *App) handleWashOrderCreate(w http.ResponseWriter, r *http.Request) {
 			"Une nouvelle fiche démarre « en attente » ou « en cours ».",
 			map[string]string{"status": "Statut invalide"})
 		return
+	}
+
+	// Les règles de la station décident ici de ce qui est accepté : clients de
+	// passage, laveur obligatoire, nombre de fiches en cours par laveur. Elles
+	// sont lues à la station de la fiche — pas à celle de l'utilisateur — pour
+	// qu'un gérant qui ouvre une fiche ailleurs applique les règles du lieu.
+	regles, err := a.lireReglesCommandes(ctx, stationID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
+		return
+	}
+	if !regles.AllowWalkIn && customerPtr == nil {
+		writeError(w, http.StatusBadRequest, "walk_in_not_allowed",
+			"Cette station n'accepte pas les clients de passage : enregistrez d'abord le client.",
+			map[string]string{"customer_id": "Client enregistré requis"})
+		return
+	}
+	if regles.RequireWasher && employeePtr == nil {
+		writeError(w, http.StatusBadRequest, "washer_required",
+			"Cette station exige un laveur affecté dès la création de la fiche.",
+			map[string]string{"employee_id": "Laveur requis"})
+		return
+	}
+	if regles.MaxOpenOrdersPerWasher > 0 && employeePtr != nil {
+		ouvertes, err := a.fichesOuvertesDuLaveur(ctx, deref(user.OrganizationID), *employeePtr)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
+			return
+		}
+		if ouvertes >= regles.MaxOpenOrdersPerWasher {
+			writeError(w, http.StatusConflict, "washer_queue_full",
+				"Ce laveur a déjà "+itoa(ouvertes)+" fiche(s) en cours (limite de la station : "+
+					itoa(regles.MaxOpenOrdersPerWasher)+").",
+				map[string]string{"employee_id": "File d'attente pleine"})
+			return
+		}
 	}
 
 	tx, err := a.Pool.Begin(ctx)

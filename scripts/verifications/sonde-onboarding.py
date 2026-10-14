@@ -212,13 +212,24 @@ def main():
                           "horaires": "horaires", "categories": "vehicules",
                           "usages": "usages", "prestations": "prestations",
                           "options": "options", "tarifs": "tarifs",
-                          "moyens": "moyens"},
+                          "moyens": "moyens", "equipe": "equipe",
+                          "materiel": "materiel", "commandes": "commandes"},
           json.dumps(formulaires, ensure_ascii=False))
-    check("le parcours compte dix étapes, dans l'ordre",
+    check("le parcours compte treize étapes, dans l'ordre",
           [e.get("code") for e in (onboard or {}).get("steps", [])] ==
           ["espace", "entreprise", "station", "horaires", "categories", "usages",
-           "prestations", "options", "tarifs", "moyens"],
+           "prestations", "options", "tarifs", "moyens", "equipe", "materiel",
+           "commandes"],
           str([e.get("code") for e in (onboard or {}).get("steps", [])]))
+    # Depuis le lot 7, le parcours va jusqu'au personnel, au matériel et aux
+    # règles de la station — mais sans les imposer : une station neuve peut
+    # ouvrir sans équipement ni stock (la sonde du lot 7 le vérifie de bout en
+    # bout). Le détail complet de ces trois étapes est de son ressort ; ici, on
+    # garde la charpente du parcours sous surveillance.
+    check("les étapes du personnel, du matériel et des règles sont facultatives",
+          all(etapes.get(code, {}).get("required") is False
+              for code in ("equipe", "materiel", "commandes")),
+          str({c: etapes.get(c, {}).get("required") for c in ("equipe", "materiel", "commandes")}))
     check("activation impossible avant remplissage",
           onboard.get("can_activate") is False and onboard.get("state") != "active",
           f"can_activate={onboard.get('can_activate')}")

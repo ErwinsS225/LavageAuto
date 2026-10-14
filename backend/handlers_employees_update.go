@@ -80,14 +80,53 @@ func (a *App) handleEmployeeUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Les données de rémunération ne se modifient pas avec les droits de
+	// gestion d'équipe : il faut la permission dédiée. Un gérant qui n'a pas
+	// cette permission gère les comptes, pas les salaires.
+	peutRemunerer := hasPermission(user, "employee:compensation")
+	for _, champ := range []string{"commission_mode", "commission_percent", "commission_per_wash_xof"} {
+		if _, present := body[champ]; present && !peutRemunerer {
+			writeError(w, http.StatusForbidden, "forbidden",
+				"Les informations de rémunération demandent une permission dédiée.",
+				map[string]string{champ: "Permission « employee:compensation » requise"})
+			return
+		}
+	}
+
+	if v, ok := body["employment_status"].(string); ok {
+		if _, connu := libellesSituationEmploye[v]; !connu {
+			writeError(w, http.StatusBadRequest, "validation_error", "Situation inconnue.",
+				map[string]string{"employment_status": "Valeurs acceptées : active, on_leave, departed"})
+			return
+		}
+	}
+	if v, ok := body["hired_on"].(string); ok && v != "" {
+		if _, err := dateOuNil(v, "hired_on"); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+	}
+
 	allowed := map[string]string{
 		"full_name": "full_name", "phone": "phone", "role": "role",
 		"is_active": "is_active", "station_id": "station_id",
+		"job_title": "job_title", "work_schedule": "work_schedule",
+		"employment_status": "employment_status", "hired_on": "hired_on",
 		"commission_mode": "commission_mode", "commission_percent": "commission_percent",
 	}
 	changed := []string{}
 	for field, column := range allowed {
 		if v, ok := body[field]; ok {
+			if texte, estTexte := v.(string); estTexte && texte == "" && column == "hired_on" {
+				// Une date effacée redevient NULL : « je ne sais pas » n'est pas
+				// le 1ᵉʳ janvier 1970.
+				if _, err := a.Pool.Exec(r.Context(),
+					`UPDATE users SET hired_on = NULL WHERE id = $1 AND organization_id = $2`,
+					id, deref(user.OrganizationID)); err == nil {
+					changed = append(changed, field)
+				}
+				continue
+			}
 			if _, err := a.Pool.Exec(r.Context(), `UPDATE users SET `+column+` = $1 WHERE id = $2 AND organization_id = $3`, v, id, deref(user.OrganizationID)); err != nil {
 				writeError(w, http.StatusBadRequest, "validation_error", "Valeur refusée pour "+field+".", nil)
 				return
@@ -95,7 +134,7 @@ func (a *App) handleEmployeeUpdate(w http.ResponseWriter, r *http.Request) {
 			changed = append(changed, field)
 		}
 	}
-	if v, ok := body["commission_per_wash_xof"].(float64); ok {
+	if v, ok := body["commission_per_wash_xof"].(float64); ok && peutRemunerer {
 		_, _ = a.Pool.Exec(r.Context(),
 			`UPDATE users SET commission_per_wash_xof = $1 WHERE id = $2 AND organization_id = $3`,
 			int(v), id, deref(user.OrganizationID))

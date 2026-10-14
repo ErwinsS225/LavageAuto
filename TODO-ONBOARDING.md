@@ -623,7 +623,7 @@ bash scripts/verifications/verifier-env.sh dev # configuration (n'affiche jamais
 | 4 — Catégories et usages | `[x]` fait (voir la note du §Lot 4) | 2026-10-14 | Migration `0008_vehicle_catalogue.sql` (4 tables + reprise des anciennes catégories globales), référentiel amorcé à chaque démarrage (13 catégories / 5 familles, 18 usages), écrans « Catégories de véhicules » et « Usages commerciaux » branchés sur les étapes 4 et 5, combinaisons véhicule × usage, `vehicle_usage_id` sur les fiches ; **36/36** contrôles de `sonde-vehicules.py` (nouvelle sonde), **29/29 tests Go**, sondes **40/40 · 30/30 · 23/23 · 35/35 · 8/8 · 1/1**, `make check` 5/5 |
 | 5 — Prestations et tarifs | `[x]` fait | 2026-10-14 | Migration `0009_services_pricing.sql`, 18 modèles de prestations, matrices prix × catégorie × usage, revue de prix par `PUT /price-rules/matrix` (motif obligatoire) ; **37/37** contrôles de `sonde-tarifs.py`, 7 tests Go dédiés |
 | 6 — Caisse et paiements | `[x]` fait | 2026-10-14 | Migration `0010_payment_methods.sql` (9 moyens par station), encaissement, reçus numérotés, 11 réglages de caisse, étape 10 du parcours ; **22/22** contrôles de `sonde-fiche-payee.py`, 5 tests Go dédiés, `make check` 5/5 |
-| 7 — Personnel, équipements, stock, commandes | `[ ]` à faire | — | — |
+| 7 — Personnel, équipements, stock, commandes | `[x]` fait | 2026-10-14 | Migration `0011_equipment_stock.sql` (matériel, stock, mouvements, poste des employés) ; 8 familles de routes (`/stations/{id}/equipment`, `/equipment/{id}`, `/stations/{id}/stock`, `/stock/items/{id}` + mouvements, `/stations/{id}/order-rules`) ; cycle de vie à **7 états** imposé par le serveur avec motifs lisibles (`transition_forbidden`, `quality_check_required`, `release_requires_payment`, `washer_queue_full`, `walk_in_not_allowed`, `washer_required`) ; parcours à **13 étapes** (équipe, matériel, règles — facultatives) ; écrans « Équipe », « Matériel », « Règles des commandes » ; **56/56** contrôles de `sonde-lot7.py` (nouvelle sonde), **55/55 tests Go**, campagne complète **40/40 · 41/41 · 37/37 · 23/23 · 36/36 · 35/35 · 22/22 · 56/56 · 1/1**, `make check` 5/5, `verif-apercu.py` 15/15 |
 | 8 — Récapitulatif et activation | `[ ]` à faire | — | — |
 | 9 — Sécurité, tests, documentation | `[ ]` à faire | — | — |
 
@@ -784,6 +784,130 @@ cookie conservé) **15/15** ; `make check` **5/5** ; **46/46 tests Go** ; sondes
 **production**, contrôle explicite : `session_token` absent du corps, `Bearer` refusé (`401`), cookie
 `HttpOnly` toujours accepté — le paquet compilé du front ne contient plus une seule occurrence du
 mécanisme.
+
+### 2026-10-14 — Lot 4 livré : catégories de véhicules et usages commerciaux
+
+**Fichiers** : `backend/migrations/0008_vehicle_catalogue.sql`, `backend/vehicle_catalogue.go`,
+`backend/handlers_vehicle_categories.go`, `src/features/vehicle-categories/`,
+`src/features/onboarding/forms/{Vehicules,Usages}Form.tsx`, `scripts/verifications/sonde-vehicules.py`.
+
+**Ce que le lot change** : une station déclare **ce qu'elle lave** (catégories, avec leurs
+dimensions) et **pour quel usage** (ville, taxis, flotte…), au lieu d'un catalogue global partagé
+par toutes les entreprises. Les combinaisons véhicule × usage deviennent la base des tarifs du lot
+suivant, et les fiches portent `vehicle_usage_id` : un tarif « taxi » ne s'applique plus à une
+berline de particulier.
+
+**Vérifié, chiffres réels** : `sonde-vehicules.py` **36/36** ; **29/29 tests Go** ;
+`make check` **5/5** (dont 14/14 écrans).
+
+### 2026-10-14 — Lot 5 livré : prestations, options, formules et grille tarifaire
+
+**Fichiers** : `backend/migrations/0009_services_pricing.sql`, `backend/pricing.go`,
+`backend/price_rules.go`, `backend/service_catalogue.go`, `backend/handlers_services*.go`,
+`src/features/services/`, `src/features/onboarding/forms/{Prestations,Options,Tarifs}Form.tsx`,
+`scripts/verifications/sonde-tarifs.py`.
+
+**Décision structurante, assumée** : **aucun prix n'est inventé**. Un compte neuf reçoit
+dix-huit modèles de prestations **à tarifer** (`price_xof = 0`) ; tant que l'exploitant n'a pas posé
+son prix, la vente est refusée par le serveur (`409 price_required`). La hiérarchie de résolution
+est explicite : contrat de flotte > prestation + catégorie + usage > … > catalogue de la station.
+Chaque revue de prix passe par `PUT /price-rules/matrix` avec un **motif** obligatoire : un tarif
+modifié sans raison est un tarif qu'on ne peut pas expliquer au client.
+
+**Vérifié, chiffres réels** : `sonde-tarifs.py` **37/37** ; 7 tests Go dédiés ;
+`make check` **5/5**.
+
+### 2026-10-14 — Lot 6 livré : caisse, moyens de paiement et reçus
+
+**Fichiers** : `backend/migrations/0010_payment_methods.sql`, `backend/payment_methods.go`,
+`backend/cash_settings.go`, `backend/handlers_payments_write.go`, `backend/handlers_receipts.go`,
+`src/features/payments/`, `src/pages/CashPage.tsx`, `src/pages/SettingsPage.tsx` (onglet caisse),
+`src/features/onboarding/forms/MoyensForm.tsx`.
+
+**Ce que le lot change** : une station neuve naît avec **neuf moyens de paiement** rangés par
+famille, seules les espèces actives — encaisser au premier jour sans configuration. Un moyen
+désactivé est refusé par le serveur (`409 payment_method_disabled`), le dernier moyen actif ne peut
+pas être retiré, et chaque encaissement produit un **reçu numéroté** rattaché au compteur de la
+caisse. La session de caisse (ouverture, comptage, clôture) est un prérequis d'encaissement.
+
+**Vérifié, chiffres réels** : `sonde-fiche-payee.py` **22/22** (dont le verrouillage d'une fiche
+encaissée) ; 5 tests Go dédiés ; `make check` **5/5**.
+
+### 2026-10-14 — Lot 7 livré : personnel, matériel, stock et règles de commande
+
+**Fichiers** : `backend/migrations/0011_equipment_stock.sql`, `backend/equipments.go`,
+`backend/stock.go`, `backend/order_rules.go`, `backend/employees_profile.go`,
+`backend/handlers_employees*.go`, `backend/handlers_wash_order_{create,update,close}.go`,
+`backend/handlers_payments_write.go`, `backend/onboarding.go` (13 étapes), `backend/app.go`
+(permission `employee:compensation`), `backend/main.go` (10 routes), `backend/e2e_lot7_test.go`,
+`backend/e2e_order_flow_test.go` ;
+`src/features/onboarding/forms/{Equipe,Materiel,Commandes}Form.tsx`, `src/features/maintenance/api.ts`,
+`src/features/wash-orders/WashOrderForm.tsx`, `src/features/washer/api.ts`,
+`src/pages/WasherPortalPage.tsx`, `src/pages/EmployeesPage.tsx`, `src/pages/OnboardingPage.tsx`,
+`src/lib/constants.ts` ;
+`scripts/verifications/sonde-lot7.py` (nouvelle).
+
+**Le principe du lot** : une règle affichée est une règle appliquée. Les sept réglages de la station
+sont lus **là où le serveur décide** — création de la fiche, encaissement, changement de statut,
+annulation — et chaque refus arrive avec un motif exploitable par l'écran, jamais un « erreur 500 » :
+
+| Règle | Refus mesuré |
+| --- | --- |
+| Clients de passage refusés | `400 walk_in_not_allowed` |
+| Laveur obligatoire à la création | `400 washer_required` |
+| Plafond de fiches par laveur | `409 washer_queue_full` (libéré par l'annulation) |
+| Contrôle qualité obligatoire | `409 quality_check_required` |
+| Remise subordonnée au paiement | `409 payment_required` |
+| Acomptes refusés | `409 partial_payment_disabled` (fiche **et** guichet) |
+| Annulation motivée | `400 validation_error` sur le champ `reason` |
+
+**Décisions prises pendant la mise en œuvre** :
+
+1. **Sept états de cycle de vie, un seul graphe.** `pending`, `in_progress`, `quality_check`,
+   `ready`, `completed`, `canceled`, `disputed` — exposés par `GET /stations/{id}/order-rules`
+   (`statuses` + libellés) pour que l'écran n'invente pas ses propres mots. Une transition non
+   prévue est refusée (`409 transition_forbidden`), et un état final le reste.
+2. **Les étapes 11 à 13 sont facultatives.** Une station équipée d'un seau et d'une éponge doit
+   pouvoir ouvrir : équipe, matériel et stock se déclarent après l'activation, et le parcours le
+   dit (`required: false`).
+3. **« Pas compté » n'est pas « zéro ».** Un article déclaré sans quantité porte
+   `quantity_known: false` et l'état `inconnu` ; une sortie dessus est refusée
+   (`409 stock_quantity_unknown`) — on ne retire pas d'un stock qu'on n'a pas compté. Une quantité
+   ne s'écrit pas à la main (`409 stock_movement_required`) : elle bouge par un mouvement, et
+   l'historique explique la quantité courante.
+4. **La rémunération est une donnée à part.** Permission `employee:compensation` (propriétaire et
+   support, **pas** gérant) : un caissier reçoit `403` sur toute écriture de barème, et les champs
+   ne sont même pas renvoyés dans la liste. Les autres champs de la fiche de poste (intitulé,
+   arrivée, horaires, situation RH) sont, eux, du ressort du gérant.
+5. **Le congé n'est pas une sanction.** « En congé » est une situation RH : l'accès au portail
+   reste ouvert, seul un compte désactivé ferme la porte.
+
+**Défauts trouvés en vérifiant, et corrigés** :
+
+1. **La garde d'acompte n'était branchée nulle part.** Avec `allow_partial_payments: false`, un
+   acompte passait quand même (réponse `200`). Le contrôle est désormais une fonction unique
+   (`verifierAcompte` dans `backend/order_rules.go`), appelée par les **deux** chemins
+   d'encaissement : `POST /wash-orders/{id}/payments` et `POST /cash/payments`. Sans cette
+   centralisation, corriger un chemin laissait l'autre ouvert.
+2. **`stations` n'a pas de colonne `updated_at`.** Un `UPDATE stations … updated_at = now()` faisait
+   échouer l'enregistrement des règles (`500`) ; la clause a été retirée plutôt que d'ajouter une
+   colonne pour satisfaire une requête.
+3. **Le portail laveur ne connaissait pas les nouveaux états.** Il ne proposait que « prendre en
+   charge » puis « terminer » : le contrôle qualité et la clôture d'une fiche y sont maintenant
+   accessibles, et le refus du serveur (fiche non encaissée) s'affiche tel quel.
+
+**Vérifié, chiffres réels** : `sonde-lot7.py` **56/56** (nouvelle sonde, entreprise créée de bout en
+bout, sans donnée de démonstration) ; `go test -count=1 ./...` **55/55 tests verts**,
+`ok washguard/backend 44.800s` ; campagne d'acceptation complète **40/40 · 41/41 · 37/37 · 23/23 ·
+36/36 · 35/35 · 22/22 · 56/56 · 1/1** ; `make check` **5/5** (14/14 écrans, 36 classes) ;
+`verif-apercu.py` **15/15**. Deux sondes et un contrôle de l'aperçu ont été **mis à jour** pour la
+nouvelle vérité du parcours (13 étapes) : ils échouaient sur l'ancienne (10 étapes), et c'est la
+bonne façon de le découvrir.
+
+**Reste ouvert, assumé** : le filtre `a_tarifer` de `handlers_services.go` est à réaligner ;
+la limite par laveur est vérifiée à la **création** de la fiche (le contrat noté parlait de
+l'affectation) — à trancher ; `SalarySection.tsx` attend huit champs RH qui n'existent pas dans
+`users` (masqué par `SALARY_UI_ENABLED`), hors périmètre V1.
 
 ---
 

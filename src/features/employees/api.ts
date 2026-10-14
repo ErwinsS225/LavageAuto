@@ -3,7 +3,12 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, query } from "@/lib/api";
-import type { CommissionMode, Employee, Role } from "@/types";
+import type {
+  CommissionMode,
+  Employee,
+  EmploymentStatus,
+  Role,
+} from "@/types";
 
 export const employeesKey = (filters?: Record<string, unknown>) =>
   ["employees", filters ?? {}] as const;
@@ -87,6 +92,14 @@ export interface EmployeeInput {
   phone?: string;
   role: Role;
   station_id?: string;
+  /**
+   * Description de la personne : facultative, et volontairement séparée de la
+   * rémunération, qui demande une permission dédiée côté serveur.
+   */
+  job_title?: string;
+  hired_on?: string;
+  work_schedule?: string;
+  employment_status?: EmploymentStatus;
   commission_mode?: CommissionMode;
   commission_per_wash_xof?: number;
   commission_percent?: number;

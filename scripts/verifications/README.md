@@ -65,6 +65,7 @@ python3 scripts/verifications/sonde-invitations.py    # inviter un collègue, le
 python3 scripts/verifications/sonde-vehicules.py     # catégories de véhicules et usages
 python3 scripts/verifications/sonde-metier.py        # caisse, remises, soldes, plafonds
 python3 scripts/verifications/sonde-fiche-payee.py   # fiche encaissée : verrouillage
+python3 scripts/verifications/sonde-lot7.py          # personnel, matériel, stock, règles
 python3 scripts/verifications/sonde-suspension.py    # entreprise suspendue : accès coupé
 ```
 
@@ -78,6 +79,9 @@ Deux limites de l'environnement, à connaître avant de conclure à un échec :
   une valeur plus haute (`REGISTER_MAX_PER_HOUR=60`) pour dérouler les huit
   sondes d'affilée. Sinon la réponse est `429 too_many_requests`, pas un bug.
 - La sonde de suspension a besoin d'un client PostgreSQL (`WASHGUARD_PSQL`).
+- `sonde-lot7.py` crée sa propre entreprise et la met en route : elle ne dépend
+  d'aucune donnée de démonstration, mais consomme une inscription (voir le
+  plafond ci-dessus).
 
 ### Aperçu distant : la sonde `verif-apercu.py`
 
