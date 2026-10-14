@@ -35,16 +35,33 @@ func scanService(row scannable) (Service, error) {
 	return s, err
 }
 
-// serviceColumnsAvecPrix : colonnes + « cette prestation a-t-elle un tarif
-// utilisable ? ». $4 dit si le tarif générique du catalogue s'applique ; une
-// règle de prix active supplée toujours un tarif générique absent.
-const serviceColumnsAvecPrix = serviceColumns + `,
-	(NOT s.is_free
-	 AND (NOT $4 OR s.price_xof <= 0)
+// conditionPrestationVendableSansPrix : **la** définition de « il reste un prix
+// à poser ». Elle est construite par une fonction parce que trois endroits s'en
+// servent — la liste des prestations, la matrice tarifaire, l'étape « tarifs »
+// du parcours — et que deux copies auraient fini par diverger.
+//
+// Deux exclusions, et ce sont des règles de gestion, pas des détails :
+//   - une prestation **gratuite** n'a pas de prix à saisir ;
+//   - une prestation **sur devis** se chiffre au cas par cas, jamais au
+//     comptoir : la compter comme « à tarifer » réclamerait un prix qui n'a pas
+//     lieu d'être, et l'écran resterait marqué incomplet pour toujours.
+//
+// `expressionGenerique` dit si le tarif du catalogue compte pour cette station
+// (chaque entreprise choisit de vendre au catalogue ou uniquement par règles).
+func conditionPrestationVendableSansPrix(expressionGenerique string) string {
+	return `NOT s.is_free AND NOT s.is_quote_only
+	 AND (NOT (` + expressionGenerique + `) OR s.price_xof <= 0)
 	 AND NOT EXISTS (SELECT 1 FROM price_rules r
 	                  WHERE r.service_id = s.id AND r.is_active
 	                    AND (r.valid_from IS NULL OR r.valid_from <= CURRENT_DATE)
-	                    AND (r.valid_to IS NULL OR r.valid_to >= CURRENT_DATE))) AS needs_price`
+	                    AND (r.valid_to IS NULL OR r.valid_to >= CURRENT_DATE))`
+}
+
+// serviceColumnsAvecPrix : colonnes + « cette prestation a-t-elle un tarif
+// utilisable ? ». $4 dit si le tarif générique du catalogue s'applique ; une
+// règle de prix active supplée toujours un tarif générique absent.
+var serviceColumnsAvecPrix = serviceColumns + `,
+	(` + conditionPrestationVendableSansPrix("$4") + `) AS needs_price`
 
 func scanServiceAvecPrix(row scannable) (Service, error) {
 	var s Service

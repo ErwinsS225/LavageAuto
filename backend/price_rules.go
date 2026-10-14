@@ -537,7 +537,9 @@ func (a *App) handlePriceMatrix(w http.ResponseWriter, r *http.Request) {
 	aTarifer := 0
 	for _, service := range services {
 		cases := []map[string]any{}
-		aUnTarif := service.IsFree
+		// Gratuite ou sur devis : les deux se passent de prix au comptoir. Le
+		// compteur « à tarifer » ne doit donc réclamer que ce qui se vend.
+		aUnTarif := service.IsFree || service.IsQuoteOnly
 		for _, categorie := range categories {
 			celle := map[string]any{
 				"category_code": categorie.Code, "price_xof": nil, "rule_id": "",

@@ -1272,6 +1272,19 @@ const PAGES = [
 }
 ]
 
+/**
+ * Le récapitulatif de mise en route est le dernier écran du parcours : il se
+ * rend avec la même session que l'assistant (même propriétaire, au même
+ * moment). Il interroge /onboarding/summary ; le réseau étant coupé pendant ce
+ * contrôle, il doit malgré tout afficher son titre et un état d'erreur
+ * lisible — c'est exactement ce que l'on vérifie ici.
+ */
+PAGES.push({
+  chemin: '/mise-en-route/recapitulatif',
+  attendu: 'Récapitulatif de mise en route',
+  session: PAGES.find((page) => page.chemin === '/onboarding').session,
+})
+
 
 // Le dossier de travail vit dans node_modules (ignoré par Git) : les modules
 // React doivent pouvoir être résolus depuis le projet.

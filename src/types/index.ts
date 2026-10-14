@@ -333,6 +333,207 @@ export interface Onboarding {
   can_activate: boolean
   started_at: string
   activated_at: string
+  /** Bloc « mise en route » : présents sur /onboarding/summary et l'activation. */
+  setup?: SetupStation
+  organization?: {
+    id: string
+    name: string
+    legal_name: string
+    email: string
+    phone: string
+    city: string
+    country: string
+    currency: string
+    timezone: string
+    status: string
+    rccm: string
+    tax_id: string
+  }
+  /** Qui a activé la station, quand, et sur quels constats. */
+  activated_by?: {
+    activated_at: string
+    activated_by: string
+    activated_by_name: string
+    snapshot: Record<string, unknown>
+  }
+  /** Résultat d'un appel à l'activation (absents d'une simple lecture). */
+  activated?: boolean
+  already_active?: boolean
+  message?: string
+}
+
+/** Récapitulatif complet : l'état du parcours **avec** son bloc de mise en route. */
+export interface OnboardingSummary extends Onboarding {
+  setup: SetupStation
+}
+
+/**
+ * État d'ouverture d'une journée, calculé par le serveur.
+ *
+ * `state` dit pourquoi : ouvert, en pause, avant l'ouverture, après la
+ * fermeture, journée fermée, ou journée déclarée ouverte sans heures (un
+ * réglage à finir, qui ne compte pas comme une journée d'ouverture).
+ */
+export interface SetupOpeningDay {
+  weekday: number
+  day_label: string
+  date: string
+  declared: boolean
+  open_today: boolean
+  opens_at: string
+  closes_at: string
+  break_start: string
+  break_end: string
+  last_checkin_at: string
+  booking_allowed: boolean
+  is_open_now: boolean
+  state: 'open' | 'break' | 'before_open' | 'after_close' | 'closed_today' | 'hours_missing'
+  label: string
+  next_change_at: string
+}
+
+/** Un élément obligatoire du parcours, avec ce qu'il faut faire et où. */
+export interface SetupRequirement {
+  code: string
+  title: string
+  description?: string
+  detail: string
+  hint: string
+  screen: string
+  required: boolean
+  done: boolean
+}
+
+/** Un réglage facultatif : fait ou vide, jamais « en cours ». */
+export interface SetupOptionalSetting {
+  code: string
+  title: string
+  state: 'done' | 'empty'
+  detail: string
+  screen: string
+  required: boolean
+  suggestion: string
+}
+
+/** Un bloc d'administration, proposé seulement si le profil peut l'ouvrir. */
+export interface SetupBlock {
+  code: string
+  label: string
+  permission: string
+  href: string
+  block: string
+}
+
+/** Un raccourci d'exploitation, proposé seulement si le profil en a l'usage. */
+export interface SetupShortcut {
+  code: string
+  label: string
+  href: string
+  permission: string
+  hint: string
+}
+
+/**
+ * Bloc « mise en route » d'une station.
+ *
+ * Le même objet alimente le récapitulatif de mise en route et le tableau de
+ * bord : un seul calcul côté serveur, donc deux écrans qui ne peuvent pas
+ * raconter deux histoires différentes sur la même station.
+ *
+ * Aucun montant n'y figure : les chiffres du jour vivent dans le rapport
+ * (`today`), et seulement s'il y a une fiche à compter.
+ */
+export interface SetupStation {
+  role: string
+  can: {
+    manage_settings: boolean
+    manage_organization: boolean
+    see_amounts: boolean
+    create_wash: boolean
+  }
+  blocks: SetupBlock[]
+  shortcuts: SetupShortcut[]
+  station: {
+    id: string
+    name: string
+    code: string
+    phone: string
+    city: string
+    locality: string
+    location: {
+      city: string
+      commune: string
+      district: string
+      street: string
+      landmark: string
+      latitude: number | null
+      longitude: number | null
+      geolocated: boolean
+      label: string
+      missing: string[]
+    }
+    currency: string
+    timezone: string
+    is_active: boolean
+    created_at: string
+  }
+  hours: {
+    today: SetupOpeningDay
+    days_open: number
+    declared_days: number
+    label: string
+  }
+  activation: {
+    state: 'pending' | 'in_progress' | 'completed' | 'active'
+    active: boolean
+    state_label: string
+    can_activate: boolean
+    blockers: SetupRequirement[]
+    blockers_count: number
+    required_count: number
+    required_done: number
+  }
+  prerequisites: SetupRequirement[]
+  missing: SetupRequirement[]
+  optional_settings: SetupOptionalSetting[]
+  catalogue: {
+    categories_active: number
+    usages_active: number
+    usage_categories_active: number
+    services_active: number
+    services_sellable: number
+    services_priced: number
+    services_sellable_priced: number
+    services_without_usable_price: number
+    options_active: number
+    price_rules_active: number
+    payment_methods_active: number
+    team_active: number
+    equipment_active: number
+    equipment_out_of_service: number
+    stock_items_active: number
+    stock_items_uncounted: number
+    stock_items_out: number
+    stock_items_low: number
+    stock_items_expired: number
+  }
+  activity: {
+    has_activity: boolean
+    orders_total: number
+    orders_open: number
+    orders_canceled: number
+    first_order_at: string
+    last_order_ref: string
+    last_order_state: string
+    last_order_label: string
+    last_order_day: string
+    last_order_at: string
+  }
+  readiness: {
+    statements: string[]
+    catalog_ready: boolean
+    no_orders: boolean
+  }
 }
 
 export interface Service {
@@ -886,8 +1087,13 @@ export interface Paginated<T> {
 export interface DashboardData {
   date: string
   station_id: string
-  today: Totals
-  series: DaySeries[]
+  /**
+   * Montants du jour. **Absents** quand la station n'a encore enregistré
+   * aucune fiche (`no_activity`) ou quand le profil n'a pas accès aux
+   * paiements : le serveur ne les envoie pas, plutôt que de les masquer.
+   */
+  today?: Totals
+  series?: DaySeries[]
   cash: {
     is_open: boolean
     session_id?: string
@@ -899,7 +1105,7 @@ export interface DashboardData {
     expenses_xof: number
     expected_cash_xof: number
   } | null
-  employees: Array<{
+  employees?: Array<{
     employee_id: string
     employee_name: string
     wash_count: number
@@ -915,12 +1121,20 @@ export interface DashboardData {
     status: string
     reference?: string
   }>
-  top_services: Array<{ service_name: string; quantity: number; revenue_xof: number }>
-  payment_methods: Array<{ method: PaymentMethod; amount_xof: number; count: number }>
+  top_services?: Array<{ service_name: string; quantity: number; revenue_xof: number }>
+  payment_methods?: Array<{ method: PaymentMethod; amount_xof: number; count: number }>
   alerts: Array<{ level: 'info' | 'warning' | 'danger'; message: string }>
   /** Objectif du mois : `null` tant que la station n'en a pas fixé. */
   goal?: MonthlyGoal | null
   definitions?: Record<string, string>
+  /** État de la station : identité, horaires, catalogue, prérequis, rôles. */
+  setup?: SetupStation
+  /** Vrai quand la station n'a encore enregistré aucune fiche. */
+  no_activity?: boolean
+  no_activity_note?: string
+  /** Vrai quand le profil n'a pas accès aux montants. */
+  amounts_hidden?: boolean
+  amounts_note?: string
 }
 
 export interface Totals {

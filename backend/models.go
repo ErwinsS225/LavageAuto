@@ -196,37 +196,43 @@ type WashOrderItem struct {
 }
 
 type WashOrder struct {
-	ID                   string          `json:"id"`
-	OrganizationID       string          `json:"organization_id"`
-	StationID            string          `json:"station_id"`
-	Reference            string          `json:"reference"`
-	CustomerID           *string         `json:"customer_id"`
-	CustomerName         string          `json:"customer_name"`
-	VehicleCategoryID    *string         `json:"vehicle_category_id"`
-	VehicleCategoryName  string          `json:"vehicle_category_name"`
-	VehicleUsageID       *string         `json:"vehicle_usage_id"`
-	VehicleUsageName     string          `json:"vehicle_usage_name"`
-	Plate                string          `json:"plate"`
-	EmployeeID           *string         `json:"employee_id"`
-	EmployeeName         string          `json:"employee_name"`
-	Status               string          `json:"status"`
-	SubtotalXOF          int             `json:"subtotal_xof"`
-	DiscountXOF          int             `json:"discount_xof"`
-	DiscountReason       string          `json:"discount_reason"`
-	TotalXOF             int             `json:"total_xof"`
-	Notes                string          `json:"notes"`
-	IncidentNote         *string         `json:"incident_note"`
-	IncidentReportedAt   *time.Time      `json:"incident_reported_at"`
-	IncidentReporterName *string         `json:"incident_reporter_name"`
-	CancelReason         *string         `json:"cancel_reason"`
-	CreatedBy            string          `json:"created_by"`
-	CreatedByName        string          `json:"created_by_name"`
-	CreatedAt            time.Time       `json:"created_at"`
-	StartedAt            *time.Time      `json:"started_at"`
-	CompletedAt          *time.Time      `json:"completed_at"`
-	CanceledAt           *time.Time      `json:"canceled_at"`
-	BusinessDay          string          `json:"business_day"`
-	Items                []WashOrderItem `json:"items"`
+	ID                   string     `json:"id"`
+	OrganizationID       string     `json:"organization_id"`
+	StationID            string     `json:"station_id"`
+	Reference            string     `json:"reference"`
+	CustomerID           *string    `json:"customer_id"`
+	CustomerName         string     `json:"customer_name"`
+	VehicleCategoryID    *string    `json:"vehicle_category_id"`
+	VehicleCategoryName  string     `json:"vehicle_category_name"`
+	VehicleUsageID       *string    `json:"vehicle_usage_id"`
+	VehicleUsageName     string     `json:"vehicle_usage_name"`
+	Plate                string     `json:"plate"`
+	EmployeeID           *string    `json:"employee_id"`
+	EmployeeName         string     `json:"employee_name"`
+	Status               string     `json:"status"`
+	SubtotalXOF          int        `json:"subtotal_xof"`
+	DiscountXOF          int        `json:"discount_xof"`
+	DiscountReason       string     `json:"discount_reason"`
+	TotalXOF             int        `json:"total_xof"`
+	Notes                string     `json:"notes"`
+	IncidentNote         *string    `json:"incident_note"`
+	IncidentReportedAt   *time.Time `json:"incident_reported_at"`
+	IncidentReporterName *string    `json:"incident_reporter_name"`
+	CancelReason         *string    `json:"cancel_reason"`
+	CreatedBy            string     `json:"created_by"`
+	CreatedByName        string     `json:"created_by_name"`
+	CreatedAt            time.Time  `json:"created_at"`
+	StartedAt            *time.Time `json:"started_at"`
+	CompletedAt          *time.Time `json:"completed_at"`
+	CanceledAt           *time.Time `json:"canceled_at"`
+	BusinessDay          string     `json:"business_day"`
+	// Le passage par le contrôle qualité et la remise du véhicule laissent une
+	// trace datée : « le contrôle a été fait » et « le véhicule est prêt » ne se
+	// déduisent pas du statut courant, ils se constatent.
+	QualityCheckedAt *time.Time      `json:"quality_checked_at"`
+	ReadyAt          *time.Time      `json:"ready_at"`
+	DeliveredAt      *time.Time      `json:"delivered_at"`
+	Items            []WashOrderItem `json:"items"`
 }
 
 type CashSession struct {

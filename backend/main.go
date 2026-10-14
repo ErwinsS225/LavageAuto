@@ -157,6 +157,10 @@ func (a *App) buildRouter() http.Handler {
 	// du propriétaire).
 	mux.HandleFunc("GET /api/v1/onboarding", a.requirePermission("settings:view", a.handleOnboardingGet))
 	mux.HandleFunc("PATCH /api/v1/onboarding/steps/{code}", a.requirePermission("settings:manage", a.handleOnboardingStep))
+	// Le récapitulatif expose la même chose que le tableau de bord (comptages,
+	// prérequis manquants) : il demande donc la même permission que la lecture
+	// de la configuration.
+	mux.HandleFunc("GET /api/v1/onboarding/summary", a.requirePermission("settings:view", a.handleOnboardingSummary))
 	mux.HandleFunc("POST /api/v1/onboarding/activate", a.requirePermission("organization:manage", a.handleOnboardingActivate))
 
 	mux.HandleFunc("GET /api/v1/organizations/current", a.requireAuth(a.handleOrgCurrent))

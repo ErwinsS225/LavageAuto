@@ -326,6 +326,11 @@ export default function OnboardingPage() {
                     est revérifiée côté serveur, étape par étape.
                   </p>
                 )}
+                {/* Le récapitulatif montre tout d'un seul tenant (sections,
+                    étapes, réglages facultatifs restants) avant d'activer. */}
+                <Link to="/mise-en-route/recapitulatif" className="text-sm font-medium text-brand hover:underline">
+                  Voir le récapitulatif complet avant d'activer
+                </Link>
               </>
             )}
           </div>

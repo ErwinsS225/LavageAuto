@@ -569,6 +569,7 @@ func TestInscriptionCreeEspaceEtSession(t *testing.T) {
 	if len(items) == 0 {
 		t.Error("le catalogue d'un compte neuf doit proposer les prestations de référence")
 	}
+	surDevis := 0
 	for _, brut := range items {
 		prestation, _ := brut.(map[string]any)
 		if entier(prestation["price_xof"]) != 0 {
@@ -577,9 +578,17 @@ func TestInscriptionCreeEspaceEtSession(t *testing.T) {
 		if gratuit, _ := prestation["is_free"].(bool); gratuit {
 			t.Errorf("gratuit est une décision de l'exploitant, pas un défaut : %v", prestation)
 		}
+		if devis, _ := prestation["is_quote_only"].(bool); devis {
+			surDevis++
+		}
 	}
-	if aTarifer := entier(catalogue["a_tarifer"]); aTarifer != len(items) {
-		t.Errorf("toutes les prestations d'un compte neuf restent à tarifer : %d/%d", aTarifer, len(items))
+	// « À tarifer » veut dire « il reste un prix à saisir » : une prestation
+	// sur devis se chiffre au cas par cas et n'a pas de prix de comptoir à
+	// poser. Le catalogue de référence en contient une (le traitement
+	// céramique) ; les autres attendent leur tarif.
+	if aTarifer := entier(catalogue["a_tarifer"]); aTarifer != len(items)-surDevis {
+		t.Errorf("les prestations vendables d'un compte neuf restent à tarifer : %d/%d (%d sur devis)",
+			aTarifer, len(items)-surDevis, surDevis)
 	}
 
 	// Le parcours le dit : le catalogue est là (il reste à le tarifer), et

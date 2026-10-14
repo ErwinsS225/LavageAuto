@@ -110,8 +110,47 @@ rien perdre de leur constat.
 | Permission | Route |
 | --- | --- |
 | `settings:view` | `GET /onboarding` (état, étapes, avancement, `missing`) |
+| `settings:view` | `GET /onboarding/summary` (le récapitulatif complet : étapes, identité, **bloc `setup`**) |
 | `settings:manage` | `PATCH /onboarding/steps/{code}` (corps : `data` descriptif) |
 | `organization:manage` | `POST /onboarding/activate` (409 `onboarding_incomplete` si un prérequis manque) |
+
+**Le parcours compte treize étapes**, dont huit obligatoires : `espace`,
+`entreprise`, `station`, `horaires`, `categories`, `prestations`, `tarifs` et
+`moyens`. Les cinq autres (`usages`, `options`, `equipe`, `materiel`,
+`commandes`) sont facultatives et restent atteignables après l'activation — une
+station tenue par son propriétaire, avec un seau et une éponge, doit pouvoir
+ouvrir. La distinction n'est pas décorative : c'est elle qui décide ce que
+l'activation exige. Une étape n'est **jamais** déclarée « faite » par le client :
+son état est recalculé à chaque lecture sur les données réelles, et
+`PATCH /onboarding/steps/{code}` ne peut enregistrer que `in_progress` ou
+`not_started` (les choix descriptifs d'un formulaire).
+
+**Le récapitulatif (`GET /onboarding/summary`)** ajoute au parcours ce que
+l'écran d'activation doit montrer : l'identité de l'entreprise
+(`organization`), le bloc `setup` (le même que celui du tableau de bord, décrit
+plus bas) et la trace de l'activation (`activated_by` : auteur, date,
+instantané). Les mêmes constats alimentent les deux écrans : un seul calcul côté
+serveur, donc deux écrans qui ne peuvent pas se contredire. Ce payload **ne
+porte aucun montant** : on y compte des prestations, des catégories et des
+jours d'ouverture, jamais des francs.
+
+**Le refus d'activation dit exactement quoi faire.** `409 onboarding_incomplete`
+avec, dans `error.fields`, un message par étape manquante (`{"tarifs": "Aucune
+prestation vendable n'a de prix utilisable…"}`) et, dans `error.details.blockers`,
+la même liste en clair : `code`, `title`, `hint` (quoi corriger), `detail` (ce
+qui a été constaté) et `screen` (l'écran qui le règle). L'application n'a donc
+pas à traduire un code en phrase : le serveur fournit les deux.
+
+**L'activation est une transaction.** Les prérequis sont revérifiés **dans** la
+transaction qui écrit l'état (ligne de l'entreprise verrouillée par
+`FOR UPDATE`) : un tarif supprimé ou une catégorie désactivée entre la
+vérification et l'écriture ne peut pas ouvrir une caisse vide. Conséquences
+mesurables : un refus n'écrit **rien** (ni état, ni date, ni ligne de journal) ;
+une seconde activation répond `200` avec `already_active: true` sans ajouter de
+trace ; ce qui a été validé est enregistré dans `onboarding_snapshot`
+(prérequis satisfaits, comptages du catalogue, journées d'ouverture, réglages
+facultatifs restants). Le journal (`audit_logs`, action `onboarding.activated`)
+est écrit dans la même transaction.
 
 Tant que `organizations.onboarding_state` n'est pas `active`, les écritures
 d'exploitation répondent **409 `onboarding_incomplete`** avec, dans
@@ -381,13 +420,15 @@ bougerait est refusée (`409 conflict`) : le paiement reste la référence.
 | Permission | Route |
 | --- | --- |
 | `settings:view` | `GET /stations/{id}/equipment` (parc de la station) |
-| `settings:manage` | `POST /stations/{id}/equipment`, `PUT /equipment/{id}`, `GET /stations/{id}/equipment/templates` |
+| `settings:manage` | `POST /stations/{id}/equipment`, `PATCH /equipment/{id}` |
 | `settings:view` | `GET /stations/{id}/stock`, `GET /stock/items/{id}` |
-| `settings:manage` | `POST /stations/{id}/stock/items`, `PUT /stock/items/{id}`, `POST /stock/items/{id}/movements` |
+| `settings:manage` | `POST /stations/{id}/stock/items`, `PATCH /stock/items/{id}`, `POST /stock/items/{id}/movements` |
 
-**Équipements.** `GET /stations/{id}/equipment/templates` sert le référentiel des
-matériels (identique pour toutes les entreprises) ; l'ajout se fait soit à
-partir d'un modèle (`template_code`), soit librement (`name`). Un engagement
+**Équipements.** `GET /stations/{id}/equipment` renvoie deux choses en un appel :
+le **parc** de la station (`items`) et le **référentiel** des matériels
+(`templates`, identique pour toutes les entreprises) — c'est ce qui permet à
+l'écran d'ajout guidé de proposer des modèles sans second appel. L'ajout se fait
+soit à partir d'un modèle (`template_code`), soit librement (`name`). Un engagement
 explicite : **une quantité n'est pas une unité — on n'efface jamais du
 matériel**, `is_active = false` conserve la fiche dans l'historique et la sort
 du parc en service (`summary.en_service`, `summary.hors_service`).
@@ -422,11 +463,44 @@ encaissement, changement de statut, annulation :
 | `release_requires_payment` (`true`) | `true` ⇒ remise du véhicule impossible avant solde (`409 payment_required`) |
 | `allow_partial_payments` (`true`) | `false` ⇒ acompte refusé (`409 partial_payment_disabled`), sur la fiche **et** au guichet |
 | `require_cancel_reason` (`true`) | `true` ⇒ annulation sans motif refusée (`400 validation_error` sur `reason`) |
+| `auto_close_on_payment` (`true`) | `true` ⇒ un encaissement qui solde la fiche la clôture ; `false` ⇒ la remise du véhicule reste une décision (`409 payment_required` levé, fiche à clore à la main) |
 
 La réponse expose aussi `statuses` : les **sept états** du cycle de vie d'un
 véhicule et leurs libellés, pour que l'écran n'invente pas ses propres mots.
+
+| État | Sens |
+| --- | --- |
+| `pending` | Reçue, en attente — la réception est l'acte de création de la fiche |
+| `in_progress` | En cours de lavage |
+| `quality_check` | Contrôle qualité |
+| `ready` | Prête, en attente du client |
+| `completed` | Livrée **et** soldée (état final) |
+| `canceled` | Annulée (état final) |
+| `disputed` | En litige — la fiche reste ouverte |
+
 Une transition non prévue par le graphe est refusée (`409 transition_forbidden`),
-un état final le reste, et un statut inconnu est refusé en `400`.
+un état final le reste, et un statut inconnu est refusé en `400`. Annuler exige
+`wash:cancel` — un droit distinct de `wash:update`, sinon « modifier une fiche »
+suffirait à annuler un lavage.
+
+**Le solde dû se compte sur de l'argent réellement reçu.** Un paiement
+`differe` est un engagement du client : il ne solde jamais une fiche et ne
+compte dans aucun encaissement. La station décide ensuite de deux choses, et
+seulement deux :
+
+- `release_requires_payment` (`true` par défaut) : sans solde nul, le passage à
+  `completed` est refusé (`409 payment_required`) — le véhicule ne se remet pas
+  avant d'être payé ;
+- `auto_close_on_payment` (`true` par défaut) : un encaissement qui couvre le
+  solde clôt la fiche de lui-même. À `false`, encaisser ne clôt rien : la remise
+  du véhicule reste une décision, et c'est la transition manuelle qui clôt.
+
+Cette décision est prise **en un seul endroit** (`cloturerFicheSiSoldee`),
+appelée par la fiche comme par le guichet — deux copies avaient déjà divergé une
+fois. Le contrôle qualité obligatoire (`quality_check_required`) garde l'accès à
+`ready` **et** à `completed`, et se vérifie sur le **passage constaté**
+(`quality_checked_at`), pas sur le statut courant : une étape technique n'est pas
+une case cochée, et l'encaissement ne permet pas de la contourner.
 
 ### Caisse et paiements
 
@@ -507,6 +581,42 @@ mentions absentes ne sont pas imprimées vides : elles sont listées dans
 | `report:view` | `GET /reports/overview?from=…&to=…` |
 | `report:export` | `GET /reports/export?from=…&to=…` (CSV) |
 | `commission:view` | `GET /commissions`, `GET /commissions/export` (CSV) |
+
+#### Le tableau de bord d'une station
+
+`GET /reports/dashboard` sert le jour en cours **et** un bloc `setup` qui dit où
+en est la station. Les deux viennent du même calcul côté serveur : l'écran
+d'arrivée et le récapitulatif de mise en route ne peuvent pas raconter deux
+histoires différentes.
+
+| Clé | Ce qu'elle dit |
+| --- | --- |
+| `role`, `can` | le profil qui lit, et ce qu'il a le droit de faire (`manage_settings`, `manage_organization`, `see_amounts`, `create_wash`) |
+| `blocks` | les sections d'administration **réellement ouvrables** par ce profil (chacune avec la permission qui l'ouvre, son libellé et son lien) |
+| `shortcuts` | les gestes du quotidien, filtrés par permission — un bouton qui refuse est un piège |
+| `station`, `hours` | identité, localisation, et si la station est **ouverte maintenant** (calculé dans son fuseau) |
+| `catalogue` | les comptages réels : catégories actives, prestations vendables, tarifées, sans prix utilisable, moyens de paiement, options, équipe, matériel, stock |
+| `activity` | ce que la station a **réellement** produit : nombre de fiches, encore ouvertes, dernière fiche et son état |
+| `activation`, `prerequisites`, `missing` | l'état de l'activation et les prérequis manquants, avec le lien vers l'étape qui les règle |
+| `optional_settings` | ce qui reste facultatif (`done` ou `empty`), jamais « en cours » |
+| `readiness` | les phrases affichables telles quelles : « Aucune commande enregistrée », « Le catalogue est prêt », « il reste N prestations sans prix utilisable » |
+
+**Avant la première fiche, aucun montant n'est servi.** La station n'a rien
+vendu : afficher `0 FCFA` ressemblerait à un résultat. Les blocs financiers
+(`today`, `series`, `employees`, `recent`, `top_services`, `payment_methods`,
+`goal`, `alerts`) sont **retirés** de la réponse — pas mis à zéro — et remplacés
+par `no_activity` + `no_activity_note`. L'état de la caisse, lui, reste lisible :
+une caisse ouverte n'est pas un chiffre d'affaires. `definitions` reste servi :
+c'est le lexique du rapport, il nomme les clés de montants sans en porter.
+
+**Le rôle décide de la lecture**, et c'est le serveur qui tranche : un profil
+sans `settings:view`/`service:manage`/`audit:view`/`subscription:view` reçoit
+`blocks: []` (le caissier n'administre rien) et aucune écriture d'administration
+n'est disponible ; un profil sans `payment:view` reçoit la réponse **sans** les
+blocs de montants et avec `amounts_hidden: true` ; le laveur, qui n'a pas
+`dashboard:view`, reçoit `403` — son espace (`/washer/tasks`) ne porte aucun
+montant, barème de commission excepté (`/washer/me/performance`, servi par
+`washer:personal_stats`).
 
 ### Poste du laveur
 

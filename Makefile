@@ -129,6 +129,7 @@ verifier-acces: ## Sondes d'acceptation contre l'API qui tourne (DATABASE_URL po
 	@python3 $(ROOT)/scripts/verifications/sonde-metier.py http://127.0.0.1:$(API_PORT)
 	@python3 $(ROOT)/scripts/verifications/sonde-fiche-payee.py http://127.0.0.1:$(API_PORT)
 	@python3 $(ROOT)/scripts/verifications/sonde-lot7.py http://127.0.0.1:$(API_PORT)
+	@python3 $(ROOT)/scripts/verifications/sonde-lot8.py http://127.0.0.1:$(API_PORT)
 	@python3 $(ROOT)/scripts/verifications/sonde-suspension.py http://127.0.0.1:$(API_PORT)
 
 smoke: ## Vérifie les écrans et les routes (sans navigateur)

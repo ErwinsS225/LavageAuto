@@ -469,33 +469,43 @@ Effort ≈ 1,5 j.*
 *DoD : l'équipe, le matériel et les règles de commande sont décrits sans mentir sur l'inconnu.
 Effort ≈ 2 j.*
 
-### Lot 8 — Récapitulatif, activation, tableau de bord alimenté
+### Lot 8 — Récapitulatif, activation, tableau de bord alimenté — **fait**
 
-- [ ] **ONB-8.1** `GET /api/v1/onboarding/summary` : toutes les données saisies + la liste des
+- [x] **ONB-8.1** `GET /api/v1/onboarding/summary` : toutes les données saisies + la liste des
       éléments obligatoires manquants **avec le lien vers l'étape concernée**.
-- [ ] **ONB-8.2** `POST /api/v1/onboarding/activate` : refuse (`409 onboarding_incomplete`) si un
+- [x] **ONB-8.2** `POST /api/v1/onboarding/activate` : refuse (`409 onboarding_incomplete`) si un
       prérequis manque, en listant précisément lesquels ; vérifie en une transaction : entreprise
       valide, autorisation (`organization:manage`), identité et localisation minimales, ≥ 1 catégorie
       active, ≥ 1 prestation active, ≥ 1 compatibilité valide, ≥ 1 tarif valide pour les prestations
       vendables, ≥ 1 moyen de paiement actif, horaires définis. Horaires, catégories, prestations,
       tarifs et moyens de paiement sont **obligatoires** ; juridique, stock, personnel et
       équipements restent facultatifs.
-- [ ] **ONB-8.3** Écran récapitulatif : chaque section avec son état, les éléments facultatifs
+- [x] **ONB-8.3** Écran récapitulatif : chaque section avec son état, les éléments facultatifs
       restants marqués comme tels, bouton d'activation désactivé tant qu'un prérequis manque (mais
       c'est le serveur qui refuse).
-- [ ] **ONB-8.4** Tableau de bord alimenté par les données réelles : nom et localisation de la
+- [x] **ONB-8.4** Tableau de bord alimenté par les données réelles : nom et localisation de la
       station, statut d'ouverture, nombre de catégories/prestations/tarifs actifs, raccourcis caisse
       /lavages/clients, avancement des réglages facultatifs, et **états honnêtes** avant la première
       vente (« Aucune commande enregistrée », « Le catalogue est prêt », « Il reste des paramètres
       facultatifs »). Aucun chiffre d'affaires, aucune productivité, aucune consommation inventés.
-- [ ] **ONB-8.5** Tableau de bord respectant les rôles : le caissier ne voit pas l'administration,
+- [x] **ONB-8.5** Tableau de bord respectant les rôles : le caissier ne voit pas l'administration,
       le laveur ne voit aucun montant financier.
-- [ ] **ONB-8.6** Tests : activation refusée cas par cas (un test par prérequis), activation réussie
+- [x] **ONB-8.6** Tests : activation refusée cas par cas (un test par prérequis), activation réussie
       puis écriture d'exploitation acceptée, tableau de bord sans commande qui n'affiche aucun
       montant fictif, rollback complet si une étape d'activation échoue.
 
 *DoD : « activer » a un sens vérifiable, et l'écran d'arrivée raconte la vérité sur la station.
 Effort ≈ 2 j.*
+
+**Livré** : `GET /onboarding/summary` (récapitulatif complet, sans montant),
+`POST /onboarding/activate` (transaction unique, refus nommé qui n'écrit rien,
+idempotent, instantané `onboarding_snapshot` + ligne de journal dans la même
+transaction, migration `0012`), bloc `setup` partagé par le récapitulatif et le
+tableau de bord (`backend/dashboard_setup.go`), écran récapitulatif
+(`/mise-en-route/recapitulatif`) et arrivée du tableau de bord alimentée par les
+données réelles. Vérifié : `sonde-lot8.py` **75/75**, `go test ./...` **57/57**,
+`rendu-pages.mjs` **18/18** (une page de plus), campagne d'acceptation complète
+au vert, `make check` **5/5**.
 
 ### Lot 9 — Sécurité, isolation, documentation, clôture
 
@@ -908,6 +918,100 @@ bonne façon de le découvrir.
 la limite par laveur est vérifiée à la **création** de la fiche (le contrat noté parlait de
 l'affectation) — à trancher ; `SalarySection.tsx` attend huit champs RH qui n'existent pas dans
 `users` (masqué par `SALARY_UI_ENABLED`), hors périmètre V1.
+
+
+### 2026-10-14 — Lot 8 livré : récapitulatif, activation, tableau de bord alimenté
+
+**Fichiers** : `backend/migrations/0012_onboarding_activation.sql` (nouvelle),
+`backend/lecteur.go` (nouveau : lire depuis le pool **ou** depuis une
+transaction), `backend/dashboard_setup.go` (nouveau : le bloc `setup` partagé),
+`backend/onboarding.go` (récapitulatif, activation transactionnelle, instantané),
+`backend/handlers_reports.go` (bloc `setup` dans le tableau de bord, retrait des
+blocs financiers sans activité), `backend/http_json.go` (`writeErrorDetaillee`),
+`backend/models.go` (traçabilité de la fiche : `quality_checked_at`, `ready_at`,
+`delivered_at`), `backend/{order_rules,price_rules,handlers_wash_order_*,
+handlers_payments_write,handlers_washer,handlers_services}.go` (contrôle qualité
+non contournable, clôture en un seul endroit, poste laveur sans montant),
+`backend/main.go` (route `GET /onboarding/summary`), `backend/e2e_lot8_test.go`
+(nouveau, 6 tests) ;
+`src/features/onboarding/{api.ts,SetupPanel.tsx}`, `src/pages/{ActivationPage.tsx,
+OnboardingPage.tsx,DashboardPage.tsx}`, `src/App.tsx`, `src/types/index.ts` ;
+`scripts/verifications/sonde-lot8.py` (nouvelle), `scripts/verifications/
+rendu-pages.mjs` (une page de plus), `docs/api.md`, `Makefile`.
+
+**Ce que le lot ajoute, en trois phrases** : le récapitulatif dit ce qui est prêt
+et ce qui manque, **sans jamais afficher un montant** ; l'activation est une
+transaction qui refuse en nommant ses obstacles et n'écrit **rien** quand elle
+refuse ; le tableau de bord et le récapitulatif lisent **le même bloc `setup`**,
+donc ils ne peuvent pas se contredire.
+
+**Décisions prises pendant la mise en œuvre** :
+
+1. **Un seul calcul, deux lecteurs.** `backend/dashboard_setup.go` compose le
+   bloc `setup` à partir de `etapesOnboardingAvec` — les mêmes contrôles que
+   l'activation. Le tableau de bord ne rejuge rien : il met en forme. Un second
+   calcul aurait fini par annoncer « catalogue prêt » à côté d'un tarif manquant.
+2. **L'activation lit dans sa transaction.** D'où `lecteur.go` : la vérification
+   et l'écriture portent sur le même instant (un tarif supprimé entre les deux ne
+   peut pas ouvrir la station). La ligne de l'entreprise est verrouillée
+   (`FOR UPDATE`), l'instantané et la ligne de journal sont écrits dans la même
+   transaction, et un refus ne laisse **aucune** trace.
+3. **« Rien » n'est pas « zéro ».** Avant la première fiche, les blocs financiers
+   sont **retirés** de la réponse du tableau de bord (pas mis à zéro : un `0 FCFA`
+   ressemble à un résultat) et remplacés par `no_activity` + `no_activity_note`.
+   L'état de la caisse reste lisible — une caisse ouverte n'est pas un chiffre
+   d'affaires. `definitions` reste servi : c'est le lexique du rapport, il nomme
+   les clés de montants sans en porter.
+4. **Le rôle décide de la lecture, côté serveur.** Les blocs d'administration sont
+   filtrés par permission (`settings:view`, `employee:view`, `service:manage`,
+   `subscription:view`, `audit:view`) : le caissier reçoit `blocks: []` et garde
+   ses raccourcis d'exploitation — sans « rapports », qu'il n'a pas le droit
+   d'ouvrir. Le laveur reçoit `403` sur le tableau de bord et sur le récapitulatif ;
+   son poste ne porte aucun montant.
+5. **La réticence à afficher se porte dans le harnais.** La sonde du lot 8 ne se
+   contente pas de lire les clés : elle balaie récursivement la réponse à la
+   recherche de toute clé `_xof` (hors lexique) — c'est ce qui garantit
+   « aucun montant avant la première commande » plutôt que de l'espérer.
+
+**Défauts trouvés en vérifiant, et corrigés** :
+
+1. **Les horaires du dimanche n'étaient jamais trouvés.** « Ouvert maintenant »
+   indexait la table `station_opening_hours` (numérotation ISO, dimanche = 7) avec
+   `time.Weekday` (dimanche = 0) : le dimanche retombait sur une journée absente.
+   Corrigé par `isoDuJour`, et vérifié sur un compte dont les six jours sont
+   déclarés.
+2. **« Fermée aujourd'hui () ».** Une journée jamais déclarée n'a pas de ligne en
+   base : le libellé partait d'un numéro absent et affichait une parenthèse vide.
+   Le jour est désormais décrit par son nom réel — et, quand tout va bien, par
+   « Ouverte jusqu'à 18:00 ».
+3. **La documentation annonçait des routes qui n'existent pas.**
+   `GET /stations/{id}/equipment/templates` (le référentiel est servi **dans**
+   `GET /stations/{id}/equipment`), `PUT /equipment/{id}` et `PUT /stock/items/{id}`
+   (ce sont des `PATCH`). Corrigé dans `docs/api.md` — un lecteur qui suit la
+   documentation ne doit pas tomber sur un `404`.
+4. **`auto_close_on_payment` n'était documenté nulle part**, alors que le réglage
+   décide si encaisser clôt la fiche. Les deux réglages qui touchent à la clôture
+   (`release_requires_payment`, `auto_close_on_payment`) sont maintenant décrits
+   ensemble, avec la règle des paiements différés (un engagement ne solde jamais).
+
+**Vérifié, chiffres réels** : `go test -count=1 ./...` → **61/61 tests verts**,
+`ok washguard/backend 43.516s` (dont 6 tests neufs du lot 8) ; `rendu-pages.mjs`
+**18/18** pages (le récapitulatif en plus) ; `coherence-routes.mjs` et
+`classes-ui.mjs` au vert ; `make check` **5/5** ; campagne d'acceptation
+**40/40 · 41/41 · 37/37 · 23/23 · 36/36 · 35/35 · 22/22 · 56/56 · 75/75 · 1/1**
+(`sonde-lot8.py` **75/75**, nouvelle) ; `verif-apercu.py` au vert.
+Quatre attentes de la sonde neuve étaient fausses (l'identité est acquise dès
+l'inscription ; le prix du comptoir va dans la prestation, pas dans une règle ;
+les blocs financiers sont retirés et non mis à zéro ; `definitions` nomme des
+clés `_xof` sans porter de valeur) : c'est la sonde qui a été corrigée, jamais
+le serveur — sauf pour les deux défauts réels ci-dessus.
+
+**Reste ouvert, assumé** (inchangé depuis le lot 7, hors périmètre V1) : le
+plafond par laveur est vérifié à la **création** de la fiche (le contrat noté
+parlait de l'affectation) — à trancher ; `SalarySection.tsx` attend huit champs
+RH qui n'existent pas dans `users` (masqué par `SALARY_UI_ENABLED`) ;
+`delivered_at` est renseigné à la clôture, sans écran dédié pour le contester.
+
 
 ---
 

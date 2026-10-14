@@ -32,6 +32,7 @@ const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SubscriptionPage = lazy(() => import('@/pages/SubscriptionPage'))
 const AccountPage = lazy(() => import('@/pages/AccountPage'))
+const ActivationPage = lazy(() => import('@/pages/ActivationPage'))
 const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'))
 const WasherPortalPage = lazy(() => import('@/pages/WasherPortalPage'))
 const AdminOverviewPage = lazy(() => import('@/pages/admin/AdminOverviewPage'))
@@ -53,7 +54,18 @@ const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'))
  * (lavages, caisse, rapports…) échoueraient de toute façon : le serveur refuse
  * les écritures d'exploitation d'une station non activée (requireOnboarding).
  */
-const ECRANS_DE_MISE_EN_ROUTE = ['/onboarding', '/parametres', '/prestations', '/tarifs', '/mon-compte', '/abonnement']
+const ECRANS_DE_MISE_EN_ROUTE = [
+  '/onboarding',
+  // Le récapitulatif fait partie du parcours : c'est l'écran qui précède
+  // l'activation. Sans lui, un utilisateur en configuration serait renvoyé à
+  // l'assistant en cliquant sur « Voir le récapitulatif ».
+  '/mise-en-route',
+  '/parametres',
+  '/prestations',
+  '/tarifs',
+  '/mon-compte',
+  '/abonnement',
+]
 
 function RequireAuth({ permission }: { permission?: string }) {
   const { me, loading } = useAuth()
@@ -150,6 +162,9 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route element={<RequireAuth permission="settings:view" />}>
             <Route path="/onboarding" element={<OnboardingPage />} />
+            {/* Le récapitulatif précède l'activation : il demande la même
+                permission que la lecture de la configuration. */}
+            <Route path="/mise-en-route/recapitulatif" element={<ActivationPage />} />
           </Route>
           <Route element={<RequireAuth permission="dashboard:view" />}>
             <Route path="/tableau-de-bord" element={<DashboardPage />} />

@@ -9,7 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
-import type { Onboarding } from '@/types'
+import type { Onboarding, OnboardingSummary } from '@/types'
 
 /**
  * État du parcours pour l'entreprise de la session.
@@ -25,6 +25,23 @@ export function useOnboarding(enabled = true, affiche: Onboarding | null = null)
     enabled,
     retry: false,
     placeholderData: affiche ?? undefined,
+  })
+}
+
+/**
+ * Récapitulatif complet de la mise en route.
+ *
+ * Il porte tout ce que le serveur sait de la station — état des étapes, bloc
+ * `setup` (catalogue, horaires, prérequis manquants, réglages facultatifs). Le
+ * tableau de bord lit le **même** bloc dans /reports/dashboard : les deux
+ * écrans ne peuvent donc pas se contredire.
+ */
+export function useOnboardingSummary(enabled = true) {
+  return useQuery<OnboardingSummary>({
+    queryKey: ['onboarding', 'summary'],
+    queryFn: () => api.get<OnboardingSummary>('/onboarding/summary'),
+    enabled,
+    retry: false,
   })
 }
 
@@ -50,7 +67,10 @@ export function useActivateOnboarding() {
       queryClient.setQueryData(['onboarding'], payload)
       void queryClient.invalidateQueries({ queryKey: ['me'] })
       void queryClient.invalidateQueries({ queryKey: ['stations'] })
+      // Le tableau de bord lit le même bloc `setup` que le récapitulatif :
+      // activer change ce qu'il raconte, il doit être relu.
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      void queryClient.invalidateQueries({ queryKey: ['onboarding', 'summary'] })
     },
   })
 }

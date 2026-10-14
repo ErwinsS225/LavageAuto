@@ -197,15 +197,14 @@ func (a *App) handleWashOrderPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// La fiche ne passe « terminée » que si le solde est couvert par une somme
-	// réellement reçue : un paiement différé la laisse ouverte et due.
+	// réellement reçue : un paiement différé la laisse ouverte et due. La
+	// décision de clore est prise au même endroit que pour l'encaissement au
+	// guichet (voir cloturerFicheSiSoldee).
 	remaining := due - amount
-	ficheSoldee := remaining <= 0 && method != "differe"
-	if ficheSoldee {
-		if _, err := tx.Exec(ctx, `
-			UPDATE wash_orders
-			SET status = 'completed', completed_at = COALESCE(completed_at, now())
-			WHERE id = $1 AND organization_id = $2 AND status <> 'canceled'`,
-			id, order.OrganizationID); err != nil {
+	var ficheSoldee bool
+	if remaining <= 0 && method != "differe" {
+		ficheSoldee, err = a.cloturerFicheSiSoldee(ctx, tx, order.OrganizationID, id)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal", "Erreur interne.", nil)
 			return
 		}

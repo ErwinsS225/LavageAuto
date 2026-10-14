@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -135,8 +136,9 @@ var catalogueOnboarding = []onboardingStep{
 		Description: "Le prix de chaque prestation — par véhicule, par usage, ou au tarif du catalogue.",
 		Required:    true,
 		Screen:      "/prestations",
-		Hint:        "Aucune prestation n'a de prix : renseignez la grille tarifaire de vos lavages.",
-		Form:        "tarifs",
+		Hint: "Aucune prestation vendable n'a de prix utilisable : renseignez la grille " +
+			"tarifaire de vos lavages (une prestation gratuite ou sur devis ne compte pas comme un tarif).",
+		Form: "tarifs",
 	},
 	{
 		Code:  "moyens",
@@ -211,8 +213,16 @@ type pointOnboarding struct {
 	Detail string
 }
 
-// etapesOnboarding calcule l'état de chaque étape pour une entreprise.
+// etapesOnboarding calcule l'état de chaque étape pour une entreprise, sur le
+// pool de connexions.
 func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboarding, error) {
+	return etapesOnboardingAvec(ctx, a.Pool, orgID)
+}
+
+// etapesOnboardingAvec : le même calcul, sur un lecteur donné. L'activation
+// l'appelle **dans sa transaction** : ce qui est vérifié est exactement ce qui
+// est écrit, au même instant.
+func etapesOnboardingAvec(ctx context.Context, q lecteur, orgID string) ([]pointOnboarding, error) {
 	if orgID == "" {
 		return nil, nil
 	}
@@ -225,7 +235,9 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		articlesStock              int
 		articlesNonComptes         int
 		prestations                int
+		prestationsVendables       int
 		prestationsTarifees        int
+		prestationsProposables     int
 		optionsDeclarees           int
 		nomStation, villeStation   string
 		stationID                  string
@@ -238,7 +250,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		moyensActifs               int
 	)
 
-	err := a.Pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		SELECT name, phone, city,
 		       (SELECT count(*) FROM stations s WHERE s.organization_id = o.id AND s.is_active),
 		       (SELECT count(*) FROM users u WHERE u.organization_id = o.id AND u.role = 'owner' AND u.is_active)
@@ -250,7 +262,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 
 	// La station de référence : la station par défaut si elle existe, sinon la
 	// première — l'écran d'onboarding doit montrer un lieu précis.
-	err = a.Pool.QueryRow(ctx, `
+	err = q.QueryRow(ctx, `
 		SELECT id, name, city FROM stations
 		WHERE organization_id = $1 AND is_active
 		ORDER BY is_default DESC, created_at LIMIT 1`, orgID).Scan(&stationID, &nomStation, &villeStation)
@@ -261,7 +273,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 	// Les journées réellement décrites (et non « un jour existe en base ») :
 	// un jour ouvert sans heures renseignées ne compte pas.
 	if stationID != "" {
-		_ = a.Pool.QueryRow(ctx, `
+		_ = q.QueryRow(ctx, `
 			SELECT count(*) FROM station_opening_hours
 			WHERE station_id = $1 AND is_open
 			  AND btrim(opens_at) <> '' AND btrim(closes_at) <> ''`, stationID).Scan(&joursOuverts)
@@ -269,7 +281,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		// Catégories et usages : ce que la station propose réellement. Le
 		// référentiel du produit peut contenir trente entrées — ce qui compte
 		// pour l'exploitation, c'est ce que **cette** station a activé.
-		_ = a.Pool.QueryRow(ctx, `
+		_ = q.QueryRow(ctx, `
 			SELECT
 			  (SELECT count(*) FROM station_vehicle_categories
 			    WHERE station_id = $1 AND is_active),
@@ -280,7 +292,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 			stationID).Scan(&categoriesActives, &usagesActifs, &couplesActifs)
 
 		// Moyens de paiement actifs : sans eux, la caisse ne peut rien encaisser.
-		_ = a.Pool.QueryRow(ctx, `
+		_ = q.QueryRow(ctx, `
 			SELECT count(*) FROM payment_methods
 			WHERE station_id = $1 AND is_active`, stationID).Scan(&moyensActifs)
 
@@ -288,7 +300,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		// (elles ne se devinent pas et ne bloquent aucune vente), mais l'écran
 		// doit dire qu'elles sont vides : sans ce constat, le formulaire des
 		// capacités ne serait jamais ouvert.
-		_ = a.Pool.QueryRow(ctx, `
+		_ = q.QueryRow(ctx, `
 			SELECT
 			  (SELECT count(*) FROM station_site_profile p
 			    WHERE p.station_id = $1 AND (
@@ -308,27 +320,46 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 			stationID).Scan(&capacitesDeclarees, &localisationRenseignee)
 	}
 
-	err = a.Pool.QueryRow(ctx, `
+	// Trois comptages, une seule définition du prix : celle de la caisse.
+	//
+	//   - **vendable** : ni gratuite, ni sur devis — une prestation qui se
+	//     vend au comptoir, donc qui a besoin d'un prix ;
+	//   - **tarifée** : vendable **et** dont le prix est connu (tarif du
+	//     catalogue ou règle de prix active dans sa période) ;
+	//   - **proposable** : tarifée et rattachée à au moins un véhicule que la
+	//     station accepte. Sans cela, une prestation parfaitement tarifée
+	//     resterait invendable — et ne pourrait donc pas ouvrir la station.
+	//
+	// `conditionPrestationVendableSansPrix` reste la référence unique de « il
+	// reste un prix à poser » : les trois comptages en dérivent, ils ne la
+	// recopient pas.
+	prixConnu := `NOT s.is_free AND NOT s.is_quote_only AND NOT (` +
+		conditionPrestationVendableSansPrix(
+			`COALESCE(st.settings ->> 'allow_generic_price', 'true') <> 'false'`) + `)`
+	proposable := `EXISTS (
+			SELECT 1 FROM station_vehicle_categories c
+			WHERE c.station_id = s.station_id AND c.is_active
+			  AND (NOT EXISTS (SELECT 1 FROM service_compatibilities k
+			                    WHERE k.service_id = s.id AND k.is_active)
+			       OR EXISTS (SELECT 1 FROM service_compatibilities k
+			                   WHERE k.service_id = s.id AND k.is_active
+			                     AND k.category_code = c.code)))`
+	err = q.QueryRow(ctx, `
 		SELECT count(*),
-		       count(*) FILTER (
-		         WHERE s.is_free
-		            OR (s.price_xof > 0
-		                AND COALESCE(st.settings ->> 'allow_generic_price', 'true') <> 'false')
-		            OR EXISTS (SELECT 1 FROM price_rules r
-		                        WHERE r.service_id = s.id AND r.is_active
-		                          AND (r.valid_from IS NULL OR r.valid_from <= CURRENT_DATE)
-		                          AND (r.valid_to IS NULL OR r.valid_to >= CURRENT_DATE)))
+		       count(*) FILTER (WHERE NOT s.is_free AND NOT s.is_quote_only),
+		       count(*) FILTER (WHERE `+prixConnu+`),
+		       count(*) FILTER (WHERE `+prixConnu+` AND `+proposable+`)
 		FROM services s
 		LEFT JOIN stations st ON st.id = s.station_id
 		WHERE s.organization_id = $1 AND s.is_active`,
-		orgID).Scan(&prestations, &prestationsTarifees)
+		orgID).Scan(&prestations, &prestationsVendables, &prestationsTarifees, &prestationsProposables)
 	if err != nil {
 		return nil, err
 	}
 
 	// L'équipe : les comptes rattachés à l'entreprise, propriétaire compris
 	// (c'est la première personne de l'équipe).
-	err = a.Pool.QueryRow(ctx, `
+	err = q.QueryRow(ctx, `
 		SELECT count(*) FROM users
 		WHERE organization_id = $1 AND is_active AND role <> 'superadmin'`, orgID).Scan(&equipe)
 	if err != nil {
@@ -339,7 +370,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 	// compte comme déclaré : l'exploitant a bien répondu, sa réponse est
 	// « je ne sais pas encore ».
 	if stationID != "" {
-		_ = a.Pool.QueryRow(ctx, `
+		_ = q.QueryRow(ctx, `
 			SELECT
 			  (SELECT count(*) FROM equipments WHERE station_id = $1 AND is_active),
 			  (SELECT count(*) FROM stock_items WHERE station_id = $1 AND is_active),
@@ -349,7 +380,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 
 	// Les options et suppléments : facultatifs, mais l'étape doit dire ce qui
 	// est réellement déclaré plutôt que d'afficher « terminée » sans rien.
-	err = a.Pool.QueryRow(ctx, `
+	err = q.QueryRow(ctx, `
 		SELECT count(*) FROM service_options
 		WHERE organization_id = $1 AND is_active`, orgID).Scan(&optionsDeclarees)
 	if err != nil {
@@ -360,7 +391,7 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 	// au lieu d'afficher « fait » sans dire lesquelles s'appliquent.
 	reglesCommandesStation := reglesParDefaut()
 	if stationID != "" {
-		if regles, err := a.lireReglesCommandes(ctx, stationID); err == nil {
+		if regles, err := lireReglesCommandesAvec(ctx, q, stationID); err == nil {
 			reglesCommandesStation = regles
 		}
 	}
@@ -426,12 +457,33 @@ func (a *App) etapesOnboarding(ctx context.Context, orgID string) ([]pointOnboar
 		case "prestations":
 			point.Done = prestations > 0
 			point.Detail = plural(prestations, "prestation active", "prestations actives")
+			if prestations > 0 && prestationsVendables == 0 {
+				point.Detail += " — toutes gratuites ou sur devis : l'étape « Grille tarifaire » attend une prestation vendable"
+			}
 		case "options":
 			point.Done = optionsDeclarees > 0
 			point.Detail = plural(optionsDeclarees, "option déclarée", "options déclarées")
 		case "tarifs":
-			point.Done = prestationsTarifees > 0
-			point.Detail = plural(prestationsTarifees, "prestation tarifée", "prestations tarifées")
+			// Un prix connu ne suffit pas : il faut un véhicule pour lequel la
+			// prestation est proposée, sinon la caisse ne la sert jamais.
+			point.Done = prestationsProposables > 0
+			switch {
+			case prestationsVendables == 0:
+				point.Detail = "Aucune prestation vendable au comptoir : toutes sont gratuites ou sur devis"
+			case prestationsTarifees == 0:
+				point.Detail = plural(prestationsVendables, "prestation vendable", "prestations vendables") +
+					" — aucun prix renseigné"
+			case prestationsProposables == 0:
+				point.Detail = plural(prestationsTarifees, "prestation tarifée", "prestations tarifées") +
+					" — mais aucune n'est proposée pour un véhicule que la station accepte"
+			default:
+				point.Detail = plural(prestationsProposables, "prestation vendable", "prestations vendables") +
+					" · " + plural(prestationsTarifees, "prestation tarifée", "prestations tarifées")
+			}
+			if restent := prestationsVendables - prestationsProposables; restent > 0 && prestationsProposables > 0 {
+				point.Detail += " · " + plural(restent, "prestation sans prix utilisable",
+					"prestations sans prix utilisable") + " (facultatif)"
+			}
 		case "moyens":
 			point.Done = moyensActifs > 0
 			point.Detail = plural(moyensActifs, "moyen de paiement actif", "moyens de paiement actifs")
@@ -780,8 +832,22 @@ func (a *App) handleOnboardingStep(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/v1/onboarding/activate — active la station si tout est prêt.
 //
-// L'activation n'est jamais déclenchée par l'interface seule : le serveur
-// revérifie chaque prérequis obligatoire et liste précisément ce qui manque.
+// L'activation est **une seule transaction**. Les prérequis sont vérifiés à
+// l'intérieur de celle-ci : vérifier hors transaction puis écrire laisserait
+// passer un tarif supprimé ou une catégorie désactivée entre les deux lectures,
+// et la station s'ouvrirait sur une configuration qui n'existe plus.
+//
+// Deux conséquences visibles :
+//
+//   - la ligne de l'entreprise est verrouillée (`FOR UPDATE`) pendant la
+//     vérification : deux activations simultanées ne peuvent pas écrire deux
+//     fois, la seconde constate que c'est déjà fait ;
+//   - si un prérequis manque, **rien** n'est écrit : ni état, ni horodatage,
+//     ni journal. Un refus ne laisse pas de trace d'activation.
+//
+// Ce qui est validé est enregistré (`onboarding_snapshot`) : l'exploitant
+// saura plus tard sur quoi portait l'ouverture, et le support pourra la
+// vérifier sans reconstituer le passé.
 func (a *App) handleOnboardingActivate(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
 	if user == nil || user.OrganizationID == nil {
@@ -789,46 +855,261 @@ func (a *App) handleOnboardingActivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	points, err := a.etapesOnboarding(ctx, *user.OrganizationID)
+	orgID := *user.OrganizationID
+
+	tx, err := a.Pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de l'activation.", nil)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// État lu et verrouillé : c'est le point de sérialisation des activations.
+	var etat string
+	if err := tx.QueryRow(ctx,
+		`SELECT onboarding_state FROM organizations WHERE id = $1 FOR UPDATE`, orgID).Scan(&etat); err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "Aucune entreprise associée à votre compte.", nil)
+		return
+	}
+
+	if etat == "active" {
+		// Idempotent : réactiver ne réécrit rien et n'ajoute pas de ligne au
+		// journal. L'exploitant qui clique deux fois obtient la même réponse,
+		// pas une double trace.
+		_ = tx.Rollback(ctx)
+		a.repondreOnboarding(w, ctx, orgID, user, map[string]any{
+			"activated": true, "already_active": true,
+			"message": "Cette station est déjà activée : rien n'a été modifié.",
+		})
+		return
+	}
+
+	points, err := etapesOnboardingAvec(ctx, tx, orgID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de la vérification des prérequis.", nil)
 		return
 	}
 
+	stationID := a.stationReference(ctx, tx, orgID)
+	bloc := a.blocMiseEnRoute(ctx, tx, user, etat, points, stationID)
+	snapshot := a.snapshotActivation(ctx, tx, user, etat, points, stationID)
+
+	// Les prérequis manquants sont nommés un par un : « il manque
+	// l'authentification » au lieu de « clic impossible ».
 	champs := map[string]string{}
+	manquants := []map[string]any{}
 	for _, point := range points {
 		if point.Step.Required && !point.Done {
 			champs[point.Step.Code] = point.Step.Hint
+			manquants = append(manquants, map[string]any{
+				"code": point.Step.Code, "title": point.Step.Title, "hint": point.Step.Hint,
+				"screen": point.Step.Screen, "detail": point.Detail,
+			})
 		}
 	}
 	if len(champs) > 0 {
-		writeError(w, http.StatusConflict, "onboarding_incomplete",
-			"Il reste des informations à renseigner avant d'activer la station.", champs)
+		_ = tx.Rollback(ctx)
+		writeErrorDetaillee(w, http.StatusConflict, "onboarding_incomplete",
+			"L'activation est refusée : "+plural(len(champs), "élément obligatoire manque",
+				"éléments obligatoires manquent")+".",
+			champs, map[string]any{"blockers": manquants, "missing": manquants,
+				"setup": bloc, "validated": false})
 		return
 	}
 
-	if _, err := a.Pool.Exec(ctx, `
+	encodes, errMarshal := json.Marshal(snapshot)
+	if errMarshal != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de l'activation.", nil)
+		return
+	}
+	if _, err := tx.Exec(ctx, `
 		UPDATE organizations
 		   SET onboarding_state = 'active',
 		       onboarding_started_at = COALESCE(onboarding_started_at, now()),
-		       onboarding_completed_at = now()
-		 WHERE id = $1`, *user.OrganizationID); err != nil {
+		       onboarding_completed_at = now(),
+		       onboarding_snapshot = $2::jsonb,
+		       onboarding_activated_by = $3,
+		       onboarding_activated_by_name = $4
+		 WHERE id = $1`, orgID, string(encodes), user.ID, user.FullName); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de l'activation.", nil)
 		return
 	}
 
-	a.addAudit(ctx, *user.OrganizationID, "", user.FullName, "onboarding.activated", "organization",
-		*user.OrganizationID, map[string]any{"steps": len(points)})
+	// Le journal est écrit **dans** la transaction : pas d'activation sans
+	// trace, et pas de trace sans activation.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO audit_logs (organization_id, station_id, actor_name, action, entity, entity_id, details)
+		VALUES ($1,$2,$3,'onboarding.activated','organization',$1,$4::jsonb)`,
+		orgID, nullSiVide(stationID), user.FullName, string(encodes)); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de l'activation.", nil)
+		return
+	}
 
-	payload, err := a.payloadOnboarding(ctx, *user.OrganizationID)
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de l'activation.", nil)
+		return
+	}
+
+	a.repondreOnboarding(w, ctx, orgID, user, map[string]any{
+		"activated": true, "already_active": false,
+		"message":  "Station activée : l'exploitation est ouverte.",
+		"snapshot": snapshot,
+	})
+}
+
+// repondreOnboarding : la réponse complète d'une activation — l'état du
+// parcours, le bloc de mise en route, et ce que l'appel a réellement fait.
+// Une seule forme de réponse, pour que l'interface n'ait pas à deviner.
+func (a *App) repondreOnboarding(w http.ResponseWriter, ctx context.Context, orgID string, user *User, extra map[string]any) {
+	payload, err := a.payloadRecapitulatif(ctx, orgID, user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", "Erreur lors de la lecture de la configuration.", nil)
+		return
+	}
+	for clef, valeur := range extra {
+		payload[clef] = valeur
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
+// GET /api/v1/onboarding/summary — le récapitulatif complet : tout ce qui a été
+// saisi, ce qui manque, et vers quel écran aller pour le compléter.
+//
+// C'est la source unique de l'écran récapitulatif et du tableau de bord : les
+// deux lisent le même bloc `setup`, donc ils ne peuvent pas raconter deux
+// histoires différentes sur la même station.
+func (a *App) handleOnboardingSummary(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	if user == nil || user.OrganizationID == nil {
+		writeError(w, http.StatusNotFound, "not_found", "Aucune entreprise associée à votre compte.", nil)
+		return
+	}
+	payload, err := a.payloadRecapitulatif(r.Context(), *user.OrganizationID, user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal",
+			"Erreur lors de la lecture du récapitulatif.", nil)
 		return
 	}
 	writeJSON(w, http.StatusOK, payload)
 }
 
-// clefsDe : les noms de champs d'un objet (journalisation lisible, sans
+// payloadRecapitulatif : l'état du parcours, plus le bloc de mise en route
+// (mêmes contrôles, mêmes chiffres que le tableau de bord).
+func (a *App) payloadRecapitulatif(ctx context.Context, orgID string, user *User) (map[string]any, error) {
+	payload, err := a.payloadOnboarding(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	etat, err := a.etatOnboarding(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	points, err := a.etapesOnboarding(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	stationID := a.stationReference(ctx, a.Pool, orgID)
+
+	// L'entreprise telle qu'elle est décrite : c'est la première section du
+	// récapitulatif, et celle qui décide de l'étape « identité ».
+	if org, err := a.getOrganization(ctx, orgID); err == nil && org != nil {
+		payload["organization"] = map[string]any{
+			"id": org.ID, "name": org.Name, "legal_name": org.LegalName,
+			"email": org.Email, "phone": org.Phone, "city": org.City,
+			"country": org.Country, "currency": org.Currency, "timezone": org.Timezone,
+			"status": org.Status, "rccm": org.RCCM, "tax_id": org.TaxID,
+		}
+	}
+	payload["setup"] = a.blocMiseEnRoute(ctx, a.Pool, user, etat, points, stationID)
+	payload["activated_by"] = a.activationTrace(ctx, orgID)
+	return payload, nil
+}
+
+// activationTrace : qui a activé la station, quand, et sur quelles constatations.
+func (a *App) activationTrace(ctx context.Context, orgID string) map[string]any {
+	var par, nom, quand string
+	var snapshot []byte
+	if err := a.Pool.QueryRow(ctx, `
+		SELECT onboarding_activated_by, onboarding_activated_by_name,
+		       COALESCE(onboarding_completed_at::text, ''), onboarding_snapshot
+		FROM organizations WHERE id = $1`, orgID).
+		Scan(&par, &nom, &quand, &snapshot); err != nil {
+		return map[string]any{"activated_at": "", "activated_by": "", "activated_by_name": "", "snapshot": map[string]any{}}
+	}
+	contenu := map[string]any{}
+	parseJSONB(snapshot, &contenu)
+	return map[string]any{
+		"activated_at": quand, "activated_by": par, "activated_by_name": nom, "snapshot": contenu,
+	}
+}
+
+// snapshotActivation : ce qui a été constaté au moment de l'activation. Des
+// comptages et des libellés — aucune donnée personnelle, aucun montant.
+func (a *App) snapshotActivation(ctx context.Context, q lecteur, user *User, etat string, points []pointOnboarding, stationID string) map[string]any {
+	bloc := a.blocMiseEnRoute(ctx, q, user, etat, points, stationID)
+	prerequis := []map[string]any{}
+	for _, point := range points {
+		if point.Step.Required {
+			prerequis = append(prerequis, map[string]any{
+				"code": point.Step.Code, "title": point.Step.Title, "detail": point.Detail,
+			})
+		}
+	}
+	facultatifsFaits, facultatifsVides := []string{}, []string{}
+	for _, point := range points {
+		if point.Step.Required {
+			continue
+		}
+		if point.Done {
+			facultatifsFaits = append(facultatifsFaits, point.Step.Code)
+		} else {
+			facultatifsVides = append(facultatifsVides, point.Step.Code)
+		}
+	}
+	snapshot := map[string]any{
+		"at":                 time.Now().Format(timeLayout),
+		"by":                 user.ID,
+		"by_name":            user.FullName,
+		"role":               user.Role,
+		"station_id":         stationID,
+		"prerequisites":      prerequis,
+		"catalogue":          bloc["catalogue"],
+		"optional_done":      facultatifsFaits,
+		"optional_remaining": facultatifsVides,
+	}
+	if station, ok := bloc["station"].(map[string]any); ok {
+		snapshot["station_name"] = station["name"]
+		snapshot["station_city"] = station["city"]
+	}
+	if heures, ok := bloc["hours"].(map[string]any); ok {
+		snapshot["opening_days"] = heures["days_open"]
+	}
+	return snapshot
+}
+
+// stationReference : la station sur laquelle porte la mise en route — la
+// station par défaut si elle existe, sinon la première. Le parcours montre un
+// lieu précis, jamais « une station ».
+func (a *App) stationReference(ctx context.Context, q lecteur, orgID string) string {
+	var id string
+	if err := q.QueryRow(ctx, `
+		SELECT id FROM stations
+		WHERE organization_id = $1 AND is_active
+		ORDER BY is_default DESC, created_at LIMIT 1`, orgID).Scan(&id); err != nil {
+		return ""
+	}
+	return id
+}
+
+// nullSiVide : une chaîne vide devient NULL (clé étrangère facultative).
+func nullSiVide(valeur string) any {
+	if strings.TrimSpace(valeur) == "" {
+		return nil
+	}
+	return valeur
+}
+
+// clefsDe// clefsDe : les noms de champs d'un objet (journalisation lisible, sans
 // recopier des valeurs qui peuvent être personnelles).
 func clefsDe(objet map[string]any) []string {
 	clefs := make([]string, 0, len(objet))

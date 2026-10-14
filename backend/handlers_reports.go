@@ -381,7 +381,22 @@ func (a *App) handleReportDashboard(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	// Bloc « mise en route » : mêmes contrôles que l'activation, mêmes
+	// chiffres que le récapitulatif. C'est lui qui permet à l'écran d'arrivée
+	// de dire « aucune commande enregistrée » plutôt que d'afficher une
+	// colonne de zéros qui aurait l'air d'un résultat.
+	etatOnboarding, errEtat := a.etatOnboarding(ctx, orgID)
+	if errEtat != nil {
+		etatOnboarding = "pending"
+	}
+	points, errPoints := a.etapesOnboarding(ctx, orgID)
+	if errPoints != nil {
+		points = nil
+	}
+	setup := a.blocMiseEnRoute(ctx, a.Pool, user, etatOnboarding, points, stationID)
+	activite, _ := setup["activity"].(map[string]any)
+
+	reponse := map[string]any{
 		"date":            today,
 		"station_id":      stationID,
 		"today":           totals.toMap(),
@@ -394,7 +409,83 @@ func (a *App) handleReportDashboard(w http.ResponseWriter, r *http.Request) {
 		"alerts":          alerts,
 		"goal":            a.goalForStation(ctx, orgID, stationID),
 		"definitions":     definitionsRapport(),
-	})
+		"setup":           setup,
+	}
+
+	// Un profil sans accès aux paiements ne reçoit aucun montant : les blocs
+	// concernés sont retirés de la réponse, pas masqués par l'interface. Le
+	// laveur, lui, ne voit pas cet écran du tout (`dashboard:view`) — il a son
+	// espace, qui ne porte aucun montant.
+	if !hasPermission(user, "payment:view") {
+		reponse = sansMontants(reponse)
+	}
+	if activite != nil {
+		if total, ok := activite["orders_total"].(int); ok && total == 0 {
+			// Aucune fiche enregistrée : les montants du jour sont retirés pour
+			// ne pas présenter un zéro comme un résultat. Le bloc `setup` dit
+			// quoi faire à la place.
+			reponse = sansMontantsDuJour(reponse)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, reponse)
+}
+
+// blocsFinanciers : les blocs d'une réponse de tableau de bord qui portent des
+// montants. La liste est explicite : une clé ajoutée plus tard sans être
+// inscrite ici resterait visible, et c'est exactement ce que l'on veut éviter
+// en la relisant.
+//
+// `alerts` en fait partie : une alerte peut dire « reste à encaisser 12 000 F ».
+var blocsFinanciers = []string{
+	"today", "series", "cash", "employees", "recent", "top_services",
+	"payment_methods", "goal", "alerts",
+}
+
+// blocsSansActivite : ce qui n'a pas de sens quand aucune fiche n'a jamais été
+// enregistrée. Ces blocs ne sont pas « à zéro » : ils n'ont rien à dire.
+//
+// `cash` n'en fait pas partie : l'état d'une session de caisse (ouverte,
+// fermée, par qui) est un fait d'exploitation, utile même avant le premier
+// lavage — c'est même là qu'on ouvre la caisse. `alerts`, lui, contient des
+// montants : il est retiré comme les autres.
+var blocsSansActivite = []string{
+	"today", "series", "employees", "recent", "top_services",
+	"payment_methods", "goal", "alerts",
+}
+
+// sansMontants retire les blocs financiers d'une réponse de tableau de bord.
+// Fonction pure : elle ne lit rien en base et ne dépend pas du profil — elle
+// ne fait que retirer, ce qui la rend vérifiable seule.
+func sansMontants(reponse map[string]any) map[string]any {
+	propre := retirerBlocs(reponse, blocsFinanciers)
+	propre["amounts_hidden"] = true
+	propre["amounts_note"] = "Votre profil n'a pas accès aux montants : demandez au propriétaire si vous en avez besoin pour votre travail."
+	return propre
+}
+
+// sansMontantsDuJour : même retrait, mais pour une autre raison — la station
+// n'a encore enregistré aucune fiche. Les montants à zéro ne sont pas faux,
+// ils sont trompeurs : ils ressemblent à une mesure alors que rien n'a eu lieu.
+func sansMontantsDuJour(reponse map[string]any) map[string]any {
+	propre := retirerBlocs(reponse, blocsSansActivite)
+	propre["no_activity"] = true
+	propre["no_activity_note"] = "Aucune fiche n'a encore été enregistrée sur cette station : le tableau de bord ne présente aucun montant avant la première commande."
+	return propre
+}
+
+// retirerBlocs : copie d'une réponse sans les blocs nommés. La copie évite de
+// modifier la réponse d'origine — un appelant qui la relit plus loin doit
+// retrouver ce qu'il a construit.
+func retirerBlocs(reponse map[string]any, blocs []string) map[string]any {
+	propre := map[string]any{}
+	for clef, valeur := range reponse {
+		propre[clef] = valeur
+	}
+	for _, clef := range blocs {
+		delete(propre, clef)
+	}
+	return propre
 }
 
 // GET /reports/overview — synthèse sur une période (par défaut le mois).

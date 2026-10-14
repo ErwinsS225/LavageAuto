@@ -19,7 +19,7 @@ const washOrderColumns = `id, organization_id, station_id, reference,
 	subtotal_xof, discount_xof, discount_reason, total_xof, notes,
 	incident_note, incident_reported_at, incident_reporter_name, cancel_reason,
 	created_by, created_by_name, created_at, started_at, completed_at,
-	canceled_at, business_day`
+	canceled_at, business_day, quality_checked_at, ready_at, delivered_at`
 
 // washOrderColumnsAliased : mêmes colonnes, préfixées pour les jointures.
 const washOrderColumnsAliased = `o.id, o.organization_id, o.station_id, o.reference,
@@ -29,7 +29,8 @@ const washOrderColumnsAliased = `o.id, o.organization_id, o.station_id, o.refere
 	o.subtotal_xof, o.discount_xof, o.discount_reason, o.total_xof, o.notes,
 	o.incident_note, o.incident_reported_at, o.incident_reporter_name, o.cancel_reason,
 	o.created_by, o.created_by_name, o.created_at, o.started_at, o.completed_at,
-	o.canceled_at, o.business_day`
+	o.canceled_at, o.business_day,
+	o.quality_checked_at, o.ready_at, o.delivered_at`
 
 // scanWashOrderDest prépare les destinations de scan d'une fiche.
 func scanWashOrderDest(o *WashOrder) []any {
@@ -40,7 +41,8 @@ func scanWashOrderDest(o *WashOrder) []any {
 		&o.SubtotalXOF, &o.DiscountXOF, &o.DiscountReason, &o.TotalXOF, &o.Notes,
 		&o.IncidentNote, &o.IncidentReportedAt, &o.IncidentReporterName, &o.CancelReason,
 		&o.CreatedBy, &o.CreatedByName, &o.CreatedAt, &o.StartedAt, &o.CompletedAt,
-		&o.CanceledAt, &o.BusinessDay}
+		&o.CanceledAt, &o.BusinessDay,
+		&o.QualityCheckedAt, &o.ReadyAt, &o.DeliveredAt}
 }
 
 // scanWashOrder lit une ligne de wash_orders.

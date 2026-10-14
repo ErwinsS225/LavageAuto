@@ -224,7 +224,10 @@ func (a *App) handlePaymentCreate(w http.ResponseWriter, r *http.Request) {
 
 	// La fiche est soldée seulement quand plus rien n'est dû : un acompte — ou
 	// un paiement différé — laisse la fiche ouverte, comme l'attend l'écran
-	// Caisse.
+	// Caisse. La décision de la **clore** est prise au même endroit que pour
+	// l'encaissement depuis la fiche (voir cloturerFicheSiSoldee) : la station
+	// peut demander la clôture automatique, et le contrôle qualité exigé ne se
+	// contourne pas en encaissant.
 	var ficheSoldee bool
 	if orderPtr != nil {
 		var due int
@@ -234,11 +237,7 @@ func (a *App) handlePaymentCreate(w http.ResponseWriter, r *http.Request) {
 			                                  AND p.method <> 'differe'), 0)
 			FROM wash_orders o WHERE o.id = $1`, *orderPtr).Scan(&due)
 		if due <= 0 {
-			ficheSoldee = true
-			_, _ = tx.Exec(ctx, `
-				UPDATE wash_orders
-				SET status = 'completed', completed_at = COALESCE(completed_at, now())
-				WHERE id = $1 AND status <> 'canceled'`, *orderPtr)
+			ficheSoldee, _ = a.cloturerFicheSiSoldee(ctx, tx, deref(user.OrganizationID), *orderPtr)
 		}
 	}
 

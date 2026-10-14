@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -41,10 +43,69 @@ func (a *App) handleWasherTasks(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(dest...); err != nil {
 			continue
 		}
-		items = append(items, orderToJSON(&o, paid, a.loadItems(r, o.ID, deref(user.OrganizationID)), "", nil))
+		// Aucun montant ne traverse le poste laveur : le prix du client ne lui
+		// est pas nécessaire pour laver un véhicule, et la recette de la
+		// station ne le regarde pas. Sa propre rémunération vit dans
+		// `/washer/me/performance` (`washer:personal_stats`), qui est un état
+		// de paie et non un chiffre d'exploitation.
+		items = append(items, sansMontantsFiche(ficheGenerique(
+			orderToJSON(&o, paid, a.loadItems(r, o.ID, deref(user.OrganizationID)), "", nil))))
 	}
 	// `items` est le nom attendu par l'interface ; `tasks` reste exposé.
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "tasks": items, "total": len(items)})
+}
+
+// ficheGenerique : la fiche repassée par JSON, pour que ses listes typées
+// (`[]WashOrderItem`) deviennent des listes génériques — c'est ce qui permet au
+// retrait des montants de descendre jusque dans les lignes.
+func ficheGenerique(fiche map[string]any) map[string]any {
+	brut, err := json.Marshal(fiche)
+	if err != nil {
+		return map[string]any{}
+	}
+	var generique map[string]any
+	if err := json.Unmarshal(brut, &generique); err != nil {
+		return map[string]any{}
+	}
+	return generique
+}
+
+// sansMontantsFiche retire d'une fiche tout ce qui porte un montant — les clés
+// en `_xof` et les devises —, y compris dans les lignes d'articles.
+//
+// La fonction est récursive et par liste explicite de préfixe : une nouvelle
+// clé de prix ajoutée plus tard (`line_discount_xof`…) disparaît d'elle-même,
+// sans qu'il faille penser à l'inscrire ici. C'est le sens de « le laveur ne
+// voit aucun montant financier » : ce n'est pas à l'interface de masquer, c'est
+// au serveur de ne pas servir.
+func sansMontantsFiche(valeur map[string]any) map[string]any {
+	propre, _ := retirerMontants(valeur).(map[string]any)
+	if propre == nil {
+		propre = map[string]any{}
+	}
+	return propre
+}
+
+// retirerMontants : le retrait récursif, appliqué à n'importe quelle valeur.
+func retirerMontants(valeur any) any {
+	switch noeud := valeur.(type) {
+	case map[string]any:
+		propre := make(map[string]any, len(noeud))
+		for clef, enfant := range noeud {
+			if strings.HasSuffix(clef, "_xof") || clef == "currency" {
+				continue
+			}
+			propre[clef] = retirerMontants(enfant)
+		}
+		return propre
+	case []any:
+		propre := make([]any, 0, len(noeud))
+		for _, enfant := range noeud {
+			propre = append(propre, retirerMontants(enfant))
+		}
+		return propre
+	}
+	return valeur
 }
 
 // POST /washer/tasks/{id}/status — avancement d'une fiche.
@@ -70,12 +131,15 @@ func (a *App) handleWasherTaskStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// La fiche doit être attribuée au laveur connecté, dans son entreprise.
-	var currentStatus string
+	// La fiche doit être attribuée au laveur connecté, dans son entreprise. On
+	// lit aussi sa station (les règles de fonctionnement s'y attachent) et le
+	// passage éventuel par le contrôle qualité.
+	var currentStatus, stationID string
+	var controleFait bool
 	if err := a.Pool.QueryRow(ctx, `
-		SELECT status FROM wash_orders
+		SELECT status, station_id, quality_checked_at IS NOT NULL FROM wash_orders
 		WHERE id = $1 AND organization_id = $2 AND employee_id = $3`,
-		id, deref(user.OrganizationID), user.ID).Scan(&currentStatus); err != nil {
+		id, deref(user.OrganizationID), user.ID).Scan(&currentStatus, &stationID, &controleFait); err != nil {
 		writeError(w, http.StatusNotFound, "not_found", "Fiche introuvable.", nil)
 		return
 	}
@@ -91,6 +155,19 @@ func (a *App) handleWasherTaskStatus(w http.ResponseWriter, r *http.Request) {
 			"Une fiche « "+libelleStatutLower(currentStatus)+" » ne peut pas passer à « "+
 				libelleStatutLower(body.Status)+" ».", map[string]string{"status": "Transition interdite"})
 		return
+	}
+
+	// Contrôle qualité obligatoire : le laveur lui-même ne livre pas un véhicule
+	// qui n'est pas passé par l'inspection. La règle est celle de la station, et
+	// elle s'applique ici comme au guichet.
+	if body.Status == "completed" {
+		regles, err := a.lireReglesCommandes(ctx, stationID)
+		if err == nil && regles.QualityCheckRequired && !controleFait {
+			writeError(w, http.StatusConflict, "quality_check_required",
+				"Cette station exige un contrôle qualité : passez la fiche par « Contrôle qualité » avant de la clôturer.",
+				map[string]string{"status": "Contrôle qualité requis"})
+			return
+		}
 	}
 
 	// Terminer un lavage suppose qu'il est encaissé : le laveur marque son

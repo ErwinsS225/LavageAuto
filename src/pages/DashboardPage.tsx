@@ -57,6 +57,7 @@ import {
   Spinner,
   StatCard,
 } from '@/components/ui'
+import { SetupPanel } from '@/features/onboarding/SetupPanel'
 import { useDashboard } from '@/features/reports/api'
 import { useWashOrders } from '@/features/wash-orders/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -455,10 +456,18 @@ function ManagerDashboardView({
   me: Me | null
   can: (permission: string) => boolean
 }) {
-  const todayData = data.today
+  // Les montants du jour arrivent **ou non** : le serveur ne les envoie pas
+  // quand la station n'a aucune fiche, ni quand le profil n'a pas accès aux
+  // paiements. L'écran s'adapte au lieu d'afficher une colonne de zéros.
+  const todayData = data.today ?? null
   const cash = data.cash
+  const cashLisible = Object.prototype.hasOwnProperty.call(data, 'cash')
   const alerts = data.alerts ?? []
   const goal = data.goal ?? null
+  const setup = data.setup
+  // Avant la première fiche (ou avant l'activation), l'écran d'arrivée raconte
+  // la station : ce qu'elle est, ce qu'elle accepte, ce qui reste à régler.
+  const enMiseEnRoute = Boolean(setup) && (!setup!.activation.active || data.no_activity === true)
 
   const series = useMemo(
     () =>
@@ -538,7 +547,19 @@ function ManagerDashboardView({
         </div>
       ) : null}
 
+      {/* État de la station : identité, horaires, catalogue, prérequis.
+          C'est le même bloc `setup` que le récapitulatif de mise en route —
+          un seul calcul serveur, donc deux écrans cohérents. */}
+      {setup && enMiseEnRoute ? <SetupPanel setup={setup} /> : null}
+      {data.no_activity_note ? (
+        <p className="rounded-field border border-line bg-surface-muted/60 px-4 py-3 text-sm text-ink-muted">
+          {data.no_activity_note}
+        </p>
+      ) : null}
+      {setup && !enMiseEnRoute ? <SetupPanel setup={setup} compact /> : null}
+
       {/* Indicateurs clés financiers */}
+      {todayData ? (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Chiffre d’affaires du jour"
@@ -566,6 +587,7 @@ function ManagerDashboardView({
           tone={todayData.result_xof >= 0 ? 'success' : 'danger'}
         />
       </div>
+      ) : null}
 
       {goal ? (
         <Card>
@@ -603,6 +625,7 @@ function ManagerDashboardView({
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
+        {data.series ? (
         <Card className="lg:col-span-2">
           <CardHeader
             title="Activité des 7 derniers jours"
@@ -630,7 +653,9 @@ function ManagerDashboardView({
             </ResponsiveContainer>
           </div>
         </Card>
+        ) : null}
 
+        {cashLisible ? (
         <Card>
           <CardHeader title="Contrôle de Caisse" subtitle={cash?.is_open ? 'En cours de service' : 'Fermée'} />
           <div className="space-y-3 p-4">
@@ -677,15 +702,19 @@ function ManagerDashboardView({
                 </Link>
               </>
             )}
-            <div className="flex items-center justify-between rounded-lg bg-surface-muted px-3 py-2 text-xs text-ink-muted">
-              <span>Reste à encaisser aujourd'hui</span>
-              <span className="tabular font-medium text-ink">{formatXOF(todayData.due_xof)}</span>
-            </div>
+            {todayData ? (
+              <div className="flex items-center justify-between rounded-lg bg-surface-muted px-3 py-2 text-xs text-ink-muted">
+                <span>Reste à encaisser aujourd'hui</span>
+                <span className="tabular font-medium text-ink">{formatXOF(todayData.due_xof)}</span>
+              </div>
+            ) : null}
           </div>
         </Card>
+        ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
+        {data.payment_methods ? (
         <Card>
           <CardHeader title="Moyens de paiement" subtitle="Répartition du jour" />
           <div className="h-64 p-3">
@@ -719,7 +748,7 @@ function ManagerDashboardView({
                               style={{ fill: 'var(--ink)', fontSize: 17, fontWeight: 600 }}
                               className="tabular"
                             >
-                              {formatCompact(todayData.payments_xof)}
+                              {formatCompact(todayData?.payments_xof ?? 0)}
                             </tspan>
                             <tspan x={box.cx} y={box.cy + 18} style={{ fill: 'var(--ink-muted)', fontSize: 11 }}>
                               encaissé
@@ -739,7 +768,9 @@ function ManagerDashboardView({
             )}
           </div>
         </Card>
+        ) : null}
 
+        {data.top_services ? (
         <Card>
           <CardHeader title="Prestations les plus vendues" subtitle="Aujourd’hui" />
           <div className="p-4">
@@ -762,7 +793,9 @@ function ManagerDashboardView({
             )}
           </div>
         </Card>
+        ) : null}
 
+        {data.employees ? (
         <Card>
           <CardHeader
             title="Rendement de l’équipe"
@@ -796,6 +829,7 @@ function ManagerDashboardView({
             )}
           </div>
         </Card>
+        ) : null}
       </div>
 
       <DefinitionNote definitions={data.definitions} />

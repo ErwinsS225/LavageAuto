@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // ---------------------------------------------------------------------------
@@ -31,6 +33,11 @@ type reglesCommandes struct {
 	QualityCheckRequired bool `json:"quality_check_required"`
 	// La remise du véhicule est-elle subordonnée au paiement complet ?
 	ReleaseRequiresPayment bool `json:"release_requires_payment"`
+	// Un encaissement qui solde la fiche la clôture-t-il ? Vrai = le cas
+	// courant du comptoir (le client règle et repart) ; faux = la station
+	// encaisse puis remet le véhicule à la main — utile quand on paie d'avance
+	// et que le lavage n'est pas commencé.
+	AutoCloseOnPayment bool `json:"auto_close_on_payment"`
 	// Les acomptes (paiements partiels) sont-ils acceptés ?
 	AllowPartialPayments bool `json:"allow_partial_payments"`
 	// Une annulation doit-elle être motivée ?
@@ -49,6 +56,7 @@ func reglesParDefaut() reglesCommandes {
 		RequireWasher:          false,
 		QualityCheckRequired:   false,
 		ReleaseRequiresPayment: true,
+		AutoCloseOnPayment:     true,
 		AllowPartialPayments:   true,
 		RequireCancelReason:    true,
 		MaxOpenOrdersPerWasher: 0,
@@ -61,6 +69,7 @@ var libellesReglesCommandes = map[string]string{
 	"require_washer":             "Exiger un laveur affecté dès la création de la fiche",
 	"quality_check_required":     "Passer par le contrôle qualité avant de déclarer un véhicule prêt",
 	"release_requires_payment":   "Ne remettre le véhicule qu'une fois la fiche soldée",
+	"auto_close_on_payment":      "Clôturer la fiche dès que le solde est nul",
 	"allow_partial_payments":     "Accepter les acomptes (paiements partiels)",
 	"require_cancel_reason":      "Exiger un motif pour annuler une fiche",
 	"max_open_orders_per_washer": "Nombre de fiches en cours par laveur (0 = pas de limite)",
@@ -69,12 +78,18 @@ var libellesReglesCommandes = map[string]string{
 // lireReglesCommandes lit les règles d'une station, valeurs par défaut
 // comprises. Les anciens noms éventuels sont ignorés : la clé est unique.
 func (a *App) lireReglesCommandes(ctx context.Context, stationID string) (reglesCommandes, error) {
+	return lireReglesCommandesAvec(ctx, a.Pool, stationID)
+}
+
+// lireReglesCommandesAvec : les mêmes règles, lues depuis un lecteur donné —
+// le contrôle d'activation lit ainsi les règles **dans** sa transaction.
+func lireReglesCommandesAvec(ctx context.Context, q lecteur, stationID string) (reglesCommandes, error) {
 	regles := reglesParDefaut()
 	if stationID == "" {
 		return regles, nil
 	}
 	var raw []byte
-	if err := a.Pool.QueryRow(ctx,
+	if err := q.QueryRow(ctx,
 		`SELECT settings FROM stations WHERE id = $1`, stationID).Scan(&raw); err != nil {
 		return regles, err
 	}
@@ -96,6 +111,9 @@ func (a *App) lireReglesCommandes(ctx context.Context, stationID string) (regles
 	if v, ok := bloc["release_requires_payment"].(bool); ok {
 		regles.ReleaseRequiresPayment = v
 	}
+	if v, ok := bloc["auto_close_on_payment"].(bool); ok {
+		regles.AutoCloseOnPayment = v
+	}
 	if v, ok := bloc["allow_partial_payments"].(bool); ok {
 		regles.AllowPartialPayments = v
 	}
@@ -115,6 +133,7 @@ func reglagesReglesCommandes(r reglesCommandes) map[string]any {
 		"require_washer":             r.RequireWasher,
 		"quality_check_required":     r.QualityCheckRequired,
 		"release_requires_payment":   r.ReleaseRequiresPayment,
+		"auto_close_on_payment":      r.AutoCloseOnPayment,
 		"allow_partial_payments":     r.AllowPartialPayments,
 		"require_cancel_reason":      r.RequireCancelReason,
 		"max_open_orders_per_washer": r.MaxOpenOrdersPerWasher,
@@ -162,6 +181,7 @@ func (a *App) handleOrderRulesUpdate(w http.ResponseWriter, r *http.Request) {
 		RequireWasher          *bool `json:"require_washer"`
 		QualityCheckRequired   *bool `json:"quality_check_required"`
 		ReleaseRequiresPayment *bool `json:"release_requires_payment"`
+		AutoCloseOnPayment     *bool `json:"auto_close_on_payment"`
 		AllowPartialPayments   *bool `json:"allow_partial_payments"`
 		RequireCancelReason    *bool `json:"require_cancel_reason"`
 		MaxOpenOrdersPerWasher *int  `json:"max_open_orders_per_washer"`
@@ -186,6 +206,9 @@ func (a *App) handleOrderRulesUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.ReleaseRequiresPayment != nil {
 		regles.ReleaseRequiresPayment = *body.ReleaseRequiresPayment
+	}
+	if body.AutoCloseOnPayment != nil {
+		regles.AutoCloseOnPayment = *body.AutoCloseOnPayment
 	}
 	if body.AllowPartialPayments != nil {
 		regles.AllowPartialPayments = *body.AllowPartialPayments
@@ -343,11 +366,18 @@ func (a *App) verifierTransitionFiche(ctx context.Context, order *WashOrder, cib
 			Message: "Un litige doit être motivé : écrivez ce que le client conteste.",
 			Fields:  map[string]string{"dispute_reason": "Motif requis"}}
 	}
-	// Contrôle qualité obligatoire : on ne saute pas l'étape, mais on peut
-	// toujours reculer (retour en atelier) ou annuler.
-	if cible == "ready" && regles.QualityCheckRequired && order.Status != "quality_check" {
+	// Contrôle qualité obligatoire : on ne saute pas l'étape — ni pour déclarer
+	// le véhicule prêt, ni pour le livrer. On peut toujours reculer (retour en
+	// atelier) ou annuler.
+	//
+	// Le contrôle n'est pas une case cochée : c'est un **passage constaté**
+	// (`wash_orders.quality_checked_at`). Vérifier seulement le statut courant
+	// laissait passer une livraison depuis « en attente » sans qu'aucune
+	// inspection n'ait eu lieu, ce qui vidait la règle de son sens.
+	if regles.QualityCheckRequired && (cible == "ready" || cible == "completed") &&
+		!a.controleQualiteFait(ctx, order.ID) {
 		return &apiError{Status: http.StatusConflict, Code: "quality_check_required",
-			Message: "Cette station exige un contrôle qualité : faites passer la fiche par « Contrôle qualité » avant de la déclarer prête.",
+			Message: "Cette station exige un contrôle qualité : faites passer la fiche par « Contrôle qualité » avant de la déclarer prête ou de la livrer.",
 			Fields:  map[string]string{"status": "Contrôle qualité requis"}}
 	}
 	// Remise subordonnée au paiement : c'est la règle qui empêche de livrer un
@@ -384,6 +414,70 @@ func (a *App) verifierAcompte(ctx context.Context, stationID, method string, amo
 	return &apiError{Status: http.StatusConflict, Code: "partial_payment_disabled",
 		Message: "Cette station n'accepte pas les paiements partiels : encaissez le solde en une fois.",
 		Fields:  map[string]string{"amount_xof": "Règlement en une fois requis"}}
+}
+
+// controleQualiteFait : la fiche est-elle passée par le contrôle qualité ?
+//
+// Lecture directe en base, et non du statut courant : une fiche « prête » ou
+// « en litige » n'est plus *en* contrôle, mais elle y est passée — l'historique
+// compte. C'est ce passage que la règle exige avant la remise du véhicule.
+func (a *App) controleQualiteFait(ctx context.Context, orderID string) bool {
+	var fait bool
+	if err := a.Pool.QueryRow(ctx,
+		`SELECT quality_checked_at IS NOT NULL FROM wash_orders WHERE id = $1`,
+		orderID).Scan(&fait); err != nil {
+		return false
+	}
+	return fait
+}
+
+// cloturerFicheSiSoldee : un encaissement qui couvre le solde clôt-il la fiche ?
+//
+// Les deux chemins d'encaissement (la fiche et le guichet) passent par ici.
+// Deux copies de cette décision avaient déjà divergé une fois — la garde
+// d'acompte n'était branchée que sur l'un des deux : elle n'existe donc plus
+// qu'en un seul endroit.
+//
+// Trois conditions, dans cet ordre :
+//   - la station a demandé la clôture automatique (`auto_close_on_payment`) ;
+//   - la fiche n'est ni annulée, ni déjà close ;
+//   - si le contrôle qualité est exigé, il a eu lieu : **encaisser ne dispense
+//     pas de l'inspection**.
+//
+// Rend `true` quand la fiche a été close, pour que l'appelant sache s'il doit
+// émettre le reçu de clôture.
+func (a *App) cloturerFicheSiSoldee(ctx context.Context, tx pgx.Tx, orgID, orderID string) (bool, error) {
+	var statut, stationID string
+	var controleFait bool
+	if err := tx.QueryRow(ctx, `
+		SELECT status, station_id, quality_checked_at IS NOT NULL
+		FROM wash_orders WHERE id = $1 AND organization_id = $2`,
+		orderID, orgID).Scan(&statut, &stationID, &controleFait); err != nil {
+		return false, err
+	}
+	if statut == "canceled" || statut == "completed" {
+		return false, nil
+	}
+	regles, err := a.lireReglesCommandes(ctx, stationID)
+	if err != nil {
+		return false, err
+	}
+	if !regles.AutoCloseOnPayment {
+		return false, nil
+	}
+	if regles.QualityCheckRequired && !controleFait {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE wash_orders
+		SET status = 'completed',
+		    completed_at = COALESCE(completed_at, now()),
+		    delivered_at = COALESCE(delivered_at, now())
+		WHERE id = $1 AND organization_id = $2 AND status = $3`,
+		orderID, orgID, statut); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // soldeFicheRequete : la même lecture que `soldeFiche`, sans requête HTTP —
